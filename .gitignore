@@ -1,0 +1,42 @@
+# ---- 连接组原始数据（1 GB，CC-BY 4.0，自行下载）----
+data/
+graph/
+
+# ---- 预处理产物 / 运行产物 ----
+out/
+shots/
+rec/
+build/
+dist/
+artifacts/
+*.spec
+
+# ---- 运行日志与数据 ----
+*.csv
+*.log
+*.npz
+*.feather
+*.xlsx
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pipcache/
+.pipwork/
+.tmp/
+
+# ---- 编辑器 ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---- ★ 内部文档：不公开（本地保留）----
+B站发布文案.md
+简介.md
+RELEASE_v1.0.md
+果蝇战斗方案-交接.md
+HANDOFF.md
