@@ -103,7 +103,31 @@
 | **饥饿** | 内稳态：越打越饿，打死才饱。饿 → 阈值降低 → 更凶 |
 | **运动** | 下行神经元群体解码 → WASD + 鼠标 + 技能键 |
 
-细节见 [`DECISIONS.md`](DECISIONS.md)（**3700+ 行**，记录了每个决策和踩过的坑）。
+## 📚 文档
+
+| 文档 | 内容 |
+|---|---|
+| **[`knowledge/`](knowledge/README.md)** | **★ 技术知识库（按主题组织，查东西看这里）** |
+| [`DECISIONS.md`](DECISIONS.md) | 开发日志（3700+ 行，按时间排，有完整的过程和实测数据） |
+| [`NOTICE.txt`](NOTICE.txt) | 免责声明与使用须知 |
+| [`THIRD-PARTY.md`](THIRD-PARTY.md) | 第三方组件与数据来源 |
+
+知识库目录：
+
+```
+knowledge/
+  README.md          索引 + 改动规范
+  01-架构.md          数据流、模块地图、一拍里发生什么
+  02-脑与学习.md      连接组、速率模型、三因子、蘑菇体、饥饿、技能选择
+  03-视觉与屏幕.md    截图、分辨率适配、各检测器、标定方法论
+  04-输入与执行.md    Interception、长按跨拍、键位映射
+  05-界面与打包.md    tkinter 窗口、叠加层、HTTP 面板、PyInstaller
+  06-踩坑总表.md      ★ 按症状查（出问题了先看这个）
+  CHANGELOG.md        ★ 改动的唯一入口
+```
+
+> **改代码必须同时更新 [`knowledge/CHANGELOG.md`](knowledge/CHANGELOG.md)。**
+> 改代码不写改动记录 = 没改。
 
 ---
 
