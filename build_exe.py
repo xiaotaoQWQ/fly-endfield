@@ -40,6 +40,9 @@ DATA_DIRS = [
     #   用户拿到 exe 之后还要用它装驱动：tools/Interception/command line
     #   installer/install-interception.exe
     ("tools", "tools"),
+    # ★ ONNX 识别模型（36 MB）。缺了不影响启动 —— onnx_detect 会静默关闭、
+    #   退回模板检测。但连携技识别质量会明显下降。
+    ("models", "models"),
 ]
 # data/ 是 1 GB 的原始连接组，只有 build_graph.py 需要它，**不打包**。
 
@@ -259,6 +262,14 @@ def main():
     print(f"\n  ✓ 打包完成")
     print(f"     {exe}")
     print(f"     整个目录 {total:.0f} MB")
+    # ★ models/ 里是 ONNX 识别模型（36 MB），在 DATA_DIRS 里会被一起打包。
+    _onnx = os.path.join(out, "_internal", "models", "autofightv13.onnx")
+    if os.path.exists(_onnx):
+        print(f"  已包含 ONNX 模型（{os.path.getsize(_onnx)/1e6:.1f} MB）")
+    else:
+        print("  ⚠ 没有 models/autofightv13.onnx —— 打出来的包会退回模板检测")
+        print("     跑 python download_model.py 下载后再打包")
+
     print(f"\n  发出去：把 dist/{NAME}/ 整个目录打包成 zip 即可。")
     print(f"  （exe 单独拿出来不行，它依赖同目录下的 _internal/）")
     return 0

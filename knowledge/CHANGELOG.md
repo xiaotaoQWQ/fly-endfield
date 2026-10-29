@@ -13,6 +13,82 @@
 
 ---
 
+## 2026-10-29 · 接入 MaaEnd 的 ONNX 识别（替代连携技模板检测）
+
+**为什么**：连携技识别用模板/颜色做了三版，都在录像上零误报、实机上车翻
+（§40 抓错 UI 元素、§46–51 三版判据）。MaaEnd 训了一个 YOLO11s，
+一次推理给出 22 类战斗 UI 的框+标签+置信度，比我们手抠的模板稳得多。
+
+**改哪**：
+- 新增 `onnx_detect.py`（约 380 行，含自检 13 条）
+- 新增 `download_model.py`（下载 + 校验 37,960,805 B）
+- 新增 `requirements.txt`
+- `endfield_fly.py`：`--onnx/--no-onnx/--onnx-conf/--onnx-model`；
+  主循环每拍跑一次 ONNX；**连携技判断优先用 `combo_active`**；
+  状态 HTML 加 7 个 ONNX 字段
+- `build_exe.py`：`DATA_DIRS` 加 `("models","models")`
+
+**怎么验**：
+```bash
+python -X utf8 download_model.py          # 下载 36.2 MB（约 10 分钟）
+python -X utf8 onnx_detect.py             # 自检 13 条
+```
+启动日志应出现：`★ ONNX 识别已启用（替代连携技模板检测）`
+
+真实帧验证（428 帧录制）：
+```
+0022: 18框 ★连携 大招 连携4/4   active=True  hp=4n end=True e=2
+0040: 15框 ★连携 连携3/4        active=True  hp=4n end=False
+0048:  2框                      active=False hp=0n   ← 战斗结束
+```
+速度：中位 96 ms（2.5 Hz 预算 400 ms）。
+
+**坑**：
+1. **代码顺序**：ONNX 块第一版插到了连携技判断后面 → `UnboundLocalError`。
+   插代码要看**依赖方向**，不能只看锚点就近。
+2. **变量作用域**：用了后面才绑定的 `fod` → 改用 `forager`。
+3. **下载截断**：36 MB 约 60 KB/s，`--max-time 600` 会截断成 29 MB；
+   必须 `--max-time 900` + **校验字节数 37,960,805**。
+4. `raw.githubusercontent.com` 不通 → 用
+   `api.github.com/repos/.../contents/...` + `Accept: application/vnd.github.raw`。
+
+---
+
+## 2026-10-28 · 调研 MaaEnd / MaaFramework —— 结论：不能整体换
+
+**为什么**：用户提出「把识别换成 maaend，这个识别比自己做的屏幕抓取要好」。
+
+**结论（三条，都有实测）**：
+
+1. **A 方案（整体集成）不可行** —— maafw 5.14.3 没有 cp314 wheel，
+   我们的 Python 3.14.7 装不上。而且它是任务流水线框架，
+   不是「给个模板返回相关值」的库，架构和我们的 2.5 Hz 同步循环不匹配。
+
+2. **B 方案（OCR 判状态）方向错** —— 试了 Windows 自带 OCR（系统里有 zh-Hans-CN）：
+   4/5 时好时坏，中文全糊。**而且 MaaEnd 自己也不用 OCR 判状态** ——
+   它的 OCR 只用于读干员等级/名称，状态判断全走 ColorMatch。
+
+3. **C 方案（借它的模板/参数）只能借思路** —— 拿它调好的
+   ComboUsable / HasEnemy 在我们的 428 帧上跑：
+   一个 8 帧只命中 1 帧，一个全部为 0。它的 ROI 绑定它自己的
+   分辨率/UI 缩放/游戏版本，搬不过来。
+
+**真正的收获（可以借）**：
+- ★ 用**最大连通域面积**代替**颜色占比** —— 天然抗零散同色噪点
+- 连携技改判「一条细白条」而不是「E 徽标模板」—— 更简单、不用管分辨率
+- 模板匹配加 green_mask —— 只匹配形状不匹配颜色，抗背景变色
+
+**改哪**：新增 knowledge/07-MaaEnd调研.md；_maa_probe/ 留了它的
+Recognition.json（9809 B，调好的 ROI + 颜色区间，值得逐条读）
+
+**怎么验**：见 07 篇的双表（工具对比 + 我们的 428 帧实测）
+
+**坑**：
+aw.githubusercontent.com 在这台机器上不通 ✗ ——
+拉 GitHub 文件要用 pi.github.com/repos/.../contents/...（base64）✓
+
+---
+
 ## 2026-10-09 · 建立知识库
 
 **为什么**：`DECISIONS.md` 是按时间排的日志（3700 行），

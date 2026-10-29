@@ -20,6 +20,7 @@
 | 按键怎么送进游戏、长按怎么跨拍 | [04-输入与执行.md](04-输入与执行.md) |
 | 面板窗口、叠加层、打包成 exe | [05-界面与打包.md](05-界面与打包.md) |
 | **出问题了 / 某个功能不灵了** | **[06-踩坑总表.md](06-踩坑总表.md)** ← 先查这个 |
+| **外部方案调研过什么** | [07-MaaEnd调研.md](07-MaaEnd调研.md) |
 | **我该把改动写在哪** | **[CHANGELOG.md](CHANGELOG.md)** ← 只写这里 |
 
 ---
@@ -58,6 +59,7 @@ knowledge/
   04-输入与执行.md        Interception、长按跨拍、键位映射
   05-界面与打包.md        tkinter 窗口、叠加层、HTTP 面板、PyInstaller
   06-踩坑总表.md          ★ 按症状查（最有用的一篇）
+  07-MaaEnd调研.md        外部方案调研（MaaEnd / MaaFramework）
   CHANGELOG.md            ★ 改动的唯一入口
 ```
 

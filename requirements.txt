@@ -1,0 +1,16 @@
+# 果蝇全脑驾驶终末地 · 运行依赖
+#
+# 装法：pip install -r requirements.txt
+#
+# ★ onnxruntime 是可选的，但没有它 --onnx 就不生效（会退回模板检测）。
+#   实测 1.31.1 有 cp314 wheel，Python 3.14 能装。
+
+numpy>=2.0
+scipy>=1.13
+pandas>=2.2
+pyarrow>=15
+pillow>=10
+matplotlib>=3.8
+
+# ★ ONNX 识别（MaaEnd 的 YOLO11s 模型推理）
+onnxruntime>=1.31

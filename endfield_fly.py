@@ -338,6 +338,19 @@ def main():
                     help="连携技键，默认 E")
     ap.add_argument("--combo-hunger", type=float, default=0.99,
                     help="饥饿值 ≥ 它才按连携技（默认 0.99，也就是「到 1 了」）")
+    # ============ ONNX 识别（MaaEnd 的 YOLO11s 模型）============
+    # ★ 一次推理给出所有战斗 UI 的框+标签+置信度，不需要标定任何 ROI。
+    #   目前只用来替换连携技判断（那一块用模板/颜色反复翻车）。
+    #   模型不在仓库里（36 MB），跑 python download_model.py 下载。
+    ap.add_argument("--onnx", action="store_true", default=True,
+                    help="启用 ONNX 识别（默认开；缺模型时自动退回模板检测）")
+    ap.add_argument("--no-onnx", action="store_true",
+                    help="关掉 ONNX 识别，强制用模板检测")
+    ap.add_argument("--onnx-conf", type=float, default=0.35,
+                    help="检测置信度阈值（默认 0.35；实测真检测 0.77~0.93）")
+    ap.add_argument("--onnx-model", default="",
+                    help="模型路径（默认 models/autofightv13.onnx）")
+
     # ============ 任务完成（挑战成功）============
     # ★ 用户要求：任务完成时给 50 次奖励，饥饿值不再上升。
     # ★★ 任务完成检测**默认关闭**（用户要求：误触太多，删掉）。
@@ -732,6 +745,19 @@ def main():
                 ("闻到气味", "是" if f["odor"] else "否"),
                 ("正在出手", "是" if f["attack"] else "否"),
                 ("连携技相关", f"{kmark.corr:+.3f}" if kmark else "—"),
+                # ★ ONNX 识别状态（缺模型时显示「关」）
+                ("ONNX 识别", "开" if f.get("onnx_ok") else "关"),
+                ("ONNX 框数", f.get("onnx_n", 0) if f.get("onnx_ok") else "—"),
+                ("ONNX 耗时", (f"{f.get('onnx_ms', 0):.0f} ms"
+                               if f.get("onnx_ok") else "—")),
+                ("ONNX 连携", ("★是" if f.get("onnx_combo") else "否")
+                 if f.get("onnx_ok") else "—"),
+                ("ONNX 大招", ("就绪" if f.get("onnx_end") else "—")
+                 if f.get("onnx_ok") else "—"),
+                ("ONNX 血危", (f"{f.get('onnx_hp_danger', 0)} 人"
+                               if f.get("onnx_ok") else "—")),
+                ("ONNX 连携满", (f"{f.get('onnx_combo_full', 0)}/4"
+                                 if f.get("onnx_ok") else "—")),
                 ("自动打死", f["n_reward"]),
                 ("自动挨打", f["n_punish"]),
                 ("打到(小额)", f["n_hit"]),
@@ -1241,6 +1267,17 @@ def main():
     from live_frame import LiveFrame
     lf = LiveFrame(prof, grab)
 
+    # ---- ONNX 识别（MaaEnd YOLO11s）----
+    # 缺模型 / 没装 onnxruntime 时 onnx_det.ok = False，下面会退回模板检测。
+    onnx_det = None
+    if args.onnx and not args.no_onnx:
+        from onnx_detect import OnnxDetect
+        _omp = args.onnx_model or None
+        onnx_det = OnnxDetect(_omp, conf=args.onnx_conf) if _omp else \
+            OnnxDetect(conf=args.onnx_conf)
+        if onnx_det.ok:
+            print(f"  ★ ONNX 识别已启用（替代连携技模板检测）")
+
     # ---- 「挑战成功」检测（副本完成）----
     # ★ 用户要求：任务完成时给 50 次奖励 + 饥饿值不再上升。
     #   横幅只停留半秒到一秒多，2.5Hz 下只有一到三次机会 ——
@@ -1401,13 +1438,40 @@ def main():
                     _eimg = lf.at(*_er)
                     if _eimg is not None:
                         m_evac = emark.step(_eimg)
+                # ---- ONNX 识别（每拍一次）----
+                # ★ 只喂**整帧内容区**，模型自己找所有 UI 元素，不需要 ROI。
+                #   缺模型时 st_onnx["ok"]=False，下面全部退回原逻辑。
+                # ★★ 必须放在所有检测**之前** —— 连携技判断要用它的结果。
+                #    （第一版插到了连携技后面，直接 UnboundLocalError 崩了）
+                st_onnx = None
+                if onnx_det is not None and onnx_det.ok and lf.img is not None:
+                    st_onnx = onnx_det.step(lf.img)
+                    # ⚠ 这里要用 forager 不是 fod —— fod 是后面觅食块才绑定的
+                    #   （第一版用了 fod，直接 UnboundLocalError）
+                    if forager is not None:
+                        forager["onnx_ok"] = bool(st_onnx["ok"])
+                        forager["onnx_ms"] = float(st_onnx["ms"])
+                        forager["onnx_n"] = int(st_onnx["n_det"])
+                        forager["onnx_combo"] = bool(st_onnx["combo_active"])
+                        forager["onnx_end"] = bool(st_onnx["end_skill"])
+                        forager["onnx_hp_danger"] = int(sum(st_onnx["hp_danger"]))
+                        forager["onnx_combo_full"] = int(sum(st_onnx["combo_full"]))
+                        forager["onnx_energy"] = int(st_onnx["energy"])
+
                 # 连携技（E）提示：只在战斗中、且能用的时候才出现
                 m_combo = False
-                if kmark is not None:
+                # ★ 优先用 ONNX 的 CharacterComboActive（模型是专门为这个游戏训的，
+                #   比我们手抠的 30×28 徽标模板稳得多 —— 模板抓错过 UI 元素、
+                #   也在实机上误触发过）。
+                #   模型不可用时退回模板检测，不改变行为。
+                if st_onnx is not None and st_onnx["ok"]:
+                    m_combo = bool(st_onnx["combo_active"])
+                elif kmark is not None:
                     _kr = kmark.rect              # 用标定值，不依赖命令行
                     _kimg = lf.at(*_kr)
                     if _kimg is not None:
                         m_combo = kmark.step(_kimg)
+
                 # ---- 「挑战成功」：任务完成 ----
                 # ★ 用户要求：完成时给 **50 次奖励** + 饥饿值**不再上升**。
                 #
@@ -2055,6 +2119,14 @@ def main():
                         f_vig=(forager.get('auto_vig') if forager else None),
                                  f_reward=(forager['n_reward'] if forager else 0),
                                  f_punish=(forager['n_punish'] if forager else 0),
+        # ★ ONNX 识别状态（面板显示用）
+        f_onnx=(bool(forager.get('onnx_ok')) if forager else False),
+        f_onnx_ms=(round(float(forager.get('onnx_ms', 0)), 1) if forager else 0),
+        f_onnx_n=(int(forager.get('onnx_n', 0)) if forager else 0),
+        f_onnx_combo=(bool(forager.get('onnx_combo')) if forager else False),
+        f_onnx_end=(bool(forager.get('onnx_end')) if forager else False),
+        f_onnx_hp=(int(forager.get('onnx_hp_danger', 0)) if forager else 0),
+        f_onnx_cf=(int(forager.get('onnx_combo_full', 0)) if forager else 0),
                                  cm_mark=bool(m_on),
                                  cm_evac=bool(m_evac) if emark is not None else False,
                                  cm_evac_corr=(round(emark.corr, 3) if emark else ''),

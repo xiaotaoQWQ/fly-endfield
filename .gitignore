@@ -40,3 +40,7 @@ B站发布文案.md
 RELEASE_v1.0.md
 果蝇战斗方案-交接.md
 HANDOFF.md
+
+# ---- MaaEnd 调研探针（第三方源码，本地参考用）----
+_maa_probe/
+*.onnx

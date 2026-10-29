@@ -425,6 +425,18 @@ class FlyPanel:
             d.text((277, yy - 1), f"已吃饱 {_hold:4.1f}s", font=self.f_tiny,
                    fill=(20, 16, 4))
 
+        # ★ ONNX 识别状态（一眼看出模型在不在工作）
+        if st.get("f_onnx"):
+            _ms = float(st.get("f_onnx_ms") or 0)
+            _txt = f"ONNX {int(st.get('f_onnx_n') or 0)}框 {_ms:.0f}ms"
+            d.rectangle([392, yy - 2, 520, yy + 15], fill=(20, 40, 30))
+            d.text((397, yy - 1), _txt, font=self.f_tiny, fill=(120, 220, 160))
+            if st.get("f_onnx_combo"):
+                d.rectangle([526, yy - 2, 600, yy + 15], fill=(60, 30, 70))
+                d.text((531, yy - 1), "连携!", font=self.f_tiny, fill=(230, 160, 255))
+        else:
+            d.text((392, yy), "ONNX 未启用", font=self.f_tiny, fill=FAINT)
+
         # 气味状态
         if st.get("f_odor"):
             d.rectangle([132, yy - 2, 206, yy + 15], fill=ACCENT)
