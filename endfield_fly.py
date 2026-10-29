@@ -1937,6 +1937,18 @@ def main():
                                 #   宁可漏放一次（20 秒后还有机会），也不要在垂死时拼命。
                                 _hpok = (isinstance(_hp, float) and _hp == _hp
                                          and _hp >= args.ult_hp)
+                                # ★ 血源两级（实测 2026-10-29）：
+                                #   ① 优先 auto_outcome 读出的百分比（精确）
+                                #   ② 没有的话用 ONNX 的 hp_danger 计数（布尔级）
+                                #      —— 模型能直接给出「有几个角色血量危险」，
+                                #         那就不需要百分比了：没人血危就可以放大招。
+                                #
+                                # ★ 为什么要加：实测日志里技能每一行都是
+                                #   「血=—」（血条没读到）→ _hpok 恒为 False →
+                                #   大招一次都没放。
+                                if not _hpok:
+                                    _nd = fod.get("onnx_hp_danger")
+                                    _hpok = bool(fod.get("onnx_ok")) and _nd == 0
                                 if (f_atk and fod["hg"].h >= args.ult_hunger
                                         and _age >= args.ult_age and _hpok
                                         and ts - fod["last_ult"] >= args.ult_cool):
@@ -1983,7 +1995,13 @@ def main():
                             #   用户要求："E 键没有冷却时间，有就可以放"。
                             #   所以冷却默认 0 —— 提示还在就每拍都按（2.5Hz）。
                             #   原来默认 1.5 秒，会出现"提示亮着但按不了"的空窗。
-                            if (m_combo
+                            # ★ 上升沿：只在 combo_active 从「无」变「有」时按一次。
+                            #   实测：提示会持续 1.5~2 秒，电平触发的话
+                            #   （--combo-cool 0）会连按 4 次 —— 日志里就是这个：
+                            #     [9.6s] 第1次 [10.1s] 第2次 [10.5s] 第3次 [11.0s] 第4次
+                            _combo_edge = bool(m_combo) and not fod.get("combo_was", False)
+                            fod["combo_was"] = bool(m_combo)
+                            if (_combo_edge
                                     and fod["hg"].h >= args.combo_hunger
                                     and ts - fod["last_combo"] >= args.combo_cool):
                                 pressed_keys.append(str(args.combo_key).upper())
