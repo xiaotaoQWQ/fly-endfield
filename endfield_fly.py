@@ -1938,17 +1938,19 @@ def main():
                                 _hpok = (isinstance(_hp, float) and _hp == _hp
                                          and _hp >= args.ult_hp)
                                 # ★ 血源两级（实测 2026-10-29）：
-                                #   ① 优先 auto_outcome 读出的百分比（精确）
-                                #   ② 没有的话用 ONNX 的 hp_danger 计数（布尔级）
-                                #      —— 模型能直接给出「有几个角色血量危险」，
-                                #         那就不需要百分比了：没人血危就可以放大招。
+                                #   ① 有精确百分比 → 就按百分比判（血少就是不放）
+                                #   ② **读不到**才降级用 ONNX 的 hp_danger 计数
                                 #
-                                # ★ 为什么要加：实测日志里技能每一行都是
-                                #   「血=—」（血条没读到）→ _hpok 恒为 False →
-                                #   大招一次都没放。
-                                if not _hpok:
-                                    _nd = fod.get("onnx_hp_danger")
-                                    _hpok = bool(fod.get("onnx_ok")) and _nd == 0
+                                # ⚠ 第一版写成了「精确判为 False 就降级」，
+                                #    结果 auto_hp=0.25（血很少）时被 ONNX 的
+                                #    "0 人血危" 覆盖 → 垂死时放大招 ✗
+                                #    降级只能在「**没有数据**」时发生，
+                                #    不能在「数据说有危险」时发生。
+                                if isinstance(_hp, float) and _hp == _hp:
+                                    _hpok = _hp >= args.ult_hp
+                                else:
+                                    _hpok = (bool(fod.get("onnx_ok"))
+                                             and fod.get("onnx_hp_danger") == 0)
                                 if (f_atk and fod["hg"].h >= args.ult_hunger
                                         and _age >= args.ult_age and _hpok
                                         and ts - fod["last_ult"] >= args.ult_cool):
