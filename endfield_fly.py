@@ -2021,6 +2021,20 @@ def main():
                                 ex.combat_press(args.combo_key)
                                 fod["last_combo"] = ts
                                 fod["n_combo"] += 1
+                                # ★ 把 ONNX 分数写进日志 ——
+                                #   用来区分「真提示」和「flicker」：
+                                #     真提示：分数稳在 0.8~0.9
+                                #     flicker：分数在 0.35~0.6 之间抖
+                                _csc = 0.0
+                                _cbox = ""
+                                if st_onnx is not None and st_onnx.get("ok"):
+                                    for _d in st_onnx.get("dets", []):
+                                        if _d["label"] == "CharacterComboActive":
+                                            if _d["score"] > _csc:
+                                                _csc = _d["score"]
+                                                _b = _d["box"]
+                                                _cbox = (f"({_b[0]:.0f},"
+                                                         f"{_b[1]:.0f})")
                                 # ★ 诊断：连着按很多次还不生效 → 大声报出来。
                                 #   连携技**没有冷却**（用户要求"有就可以放"），
                                 #   所以按错键时的症状就是"每拍都按、永远不生效"。
@@ -2045,6 +2059,7 @@ def main():
                                 print(f"  [{ts:6.1f}s] ★ 连携技 → 按 "
                                       f"{args.combo_key.upper()}"
                                       f"  （饥饿 {fod['hg'].h:.2f}，"
+                                      f"分 {_csc:.2f} {_cbox}，"
                                       f"第 {fod['n_combo']} 次）")
                     # 指令列表一律英文（用户要求）
                     action_txt += ("  EAT-ATK" if f_atk else "  HUNGRY")
