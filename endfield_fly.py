@@ -127,6 +127,11 @@ def main():
     ap.add_argument("--escape-ticks", type=int, default=4)
     # ★ 撞墙逃逸的退出条件：从进入逃逸起**累计位移**超过它才算走出来了。
     #   固定拍数退出会导致"转完就回撞同一堵墙"（实测日志见过 4 拍就回撞）。
+    ap.add_argument("--escape-turn-sec", type=float, default=0.6,
+                    help="撞墙逃逸第 1 段只转多久（默认 0.6 秒），之后边转边走")
+    ap.add_argument("--escape-max-sec", type=float, default=2.5,
+                    help="撞墙逃逸最长持续多久（默认 5 秒）。到点还卡就反向转。"
+                         "★ 没有这个上限会死转 —— 因为只转不走时位移恒为 0")
     ap.add_argument("--escape-dist", type=float, default=40.0,
                     help="撞墙逃逸要累计走够多少地图像素才退出（默认 40）。"
                          "太小会回撞同一堵墙，太大则绕远路")
@@ -1340,6 +1345,9 @@ def main():
         counts = dict(left=0, right=0, jump=0, sprint=0, esc=0, stuck=0)
         # ★ 撞墙逃逸的累计位移（None = 不在逃逸中）
         esc_run = None
+        esc_t0 = 0.0        # 逃逸开始时刻
+        esc_flip = 1        # 逃逸转向极性（超时后翻）
+        action_flip = False
         logbuf: list = []
         spikes_total = 0
         steps_total = 0
@@ -1790,11 +1798,21 @@ def main():
                     #   （--escape-dist，默认 40 地图像素）才把控制权还回去。
                     if esc_run is None and stuck_now:
                         esc_run = 0.0            # 进入逃逸
+                        esc_t0 = ts              # ★ 记时刻（超时用）
+                        esc_flip = 1             # ★ 转向极性（超时后翻）
                     if esc_run is not None:
                         esc_run += float(od.get("dist") or 0.0)
+                        _el = ts - esc_t0
                         if esc_run >= args.escape_dist:
                             esc_run = None       # 真的走出来了
                             walk_lock = args.walk_lock
+                        elif _el >= args.escape_max_sec:
+                            # ★ 超时还没走开 → 反个方向再试，别死转
+                            #   （墙角里常有一边是通的）
+                            esc_flip = -esc_flip
+                            esc_t0 = ts
+                            esc_run = 0.0
+                            esc = True
                         else:
                             esc = True
                     if esc and escape_left <= 0:
@@ -1804,12 +1822,40 @@ def main():
                 if pm is not None:
                     # ===== 群体解码口径：三条轴直接驱动 WASD + 鼠标 =====
                     if esc:
-                        # 撞墙反射：松开所有移动键，原地转
+                        # ★★ 逃逸必须**边转边走**（2026-10-29 修）
+                        #
+                        #   原实现只 apply_raw(turn_dx=...)，一个移动键都不按
+                        #   → 原地转圈 → 位移恒为 0。
+                        #   而上一版把退出条件改成「累计位移 ≥ escape_dist」，
+                        #   于是这个条件永远不满足 → esc 永久为真 → **无限转**。
+                        #   用户看到的就是「站在原地视野围着人物转」。
+                        #
+                        #   现在分两段：先只转（瞄方向），再边转边走。
                         turn = turn if turn else 1
+                        turn = turn * esc_flip
                         turn_dx = turn * args.turn_gain * 40 * esc_mult
+                        _el = ts - esc_t0
+                        _walk = _el >= args.escape_turn_sec
+                        # ★★ 逃逸**恒斜向走**（2026-10-29 再改）
+                        #
+                        #   原来加了个 esc_tries>=2 的门槛（连卡两次才斜向），
+                        #   模拟显示要卡 11 秒才生效 —— 用户要的是"别卡很久"，
+                        #   这个太慢。
+                        #
+                        #   而且从行为上讲：被挡住的果蝇本来就会**斜着挤**，
+                        #   不会直挺挺往墙上撞。所以直接恒开。
+                        _a = esc_flip < 0
+                        _d = esc_flip > 0
                         if ex is not None:
-                            ex.apply_raw(turn_dx=turn_dx)
-                        action_txt = "WALL-ESC turn " + ("R" if turn > 0 else "L")
+                            if _walk:
+                                ex.apply_raw(True, False, _a, _d, turn_dx)
+                            else:
+                                ex.apply_raw(turn_dx=turn_dx)
+                        action_txt = ("WALL-ESC walk+turn " if _walk
+                                      else "WALL-ESC turn ") + (
+                                          "R" if turn > 0 else "L")
+                        if _walk:
+                            action_txt += "+\u659c"
                     else:
                         turn_dx = pm["turn_dx"]
                         # ★ 战斗状态下**不许跳**（用户要求）。跳跃会打断攻击动作、
