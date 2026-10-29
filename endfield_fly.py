@@ -1809,9 +1809,14 @@ def main():
                         elif _el >= args.escape_max_sec:
                             # ★ 超时还没走开 → 反个方向再试，别死转
                             #   （墙角里常有一边是通的）
+                            #
+                            # ⚠ 只重置**计时器**，**不能**清零 esc_run ——
+                            #   清零会把已积累的位移丢掉，于是永远到不了
+                            #   escape_dist → 无限「反向 → 反向」。
+                            #   模拟抓到过：acc 到 25 就被清零。
                             esc_flip = -esc_flip
                             esc_t0 = ts
-                            esc_run = 0.0
+                            esc_run += 0.0        # 保持进度，只重置计时
                             esc = True
                         else:
                             esc = True
