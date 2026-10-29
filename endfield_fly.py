@@ -2290,7 +2290,7 @@ def main():
                           f"{heading:>5.0f}° {od['speed']:>6.2f} "
                           # ★ 测速可不可信：? = 测不准（小地图在转/对比度低），
                           #   这时 od['stuck'] 会强制为 False —— 见 ef_vision.MapOdometry
-                          f"{'!' if not od.get('trust', True) else ' ':>2s}"
+                          f"{('!' + format(od.get('sharp', 0), '.1f')) if not od.get('trust', True) else '    ':>6s}"
                           f"{'卡' if od['stuck'] else '  ':>3s}  "
                           f"{'FLEE ' if esc else ''}{action_txt}")
 
