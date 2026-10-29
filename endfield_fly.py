@@ -1207,8 +1207,12 @@ def main():
         #   11.5.0.14471 后旧路径直接消失，硬编码会让录屏静默失败。
         #   所以按通配找最新版本，再退回 B 站客户端自带的那个。
         import glob as _glob
+        # ⚠ 不写死任何带用户名的路径（公开仓库里不该有个人信息）
+        _appdata = os.environ.get("APPDATA") or ""
         for pat in (r"C:\Program Files\JianyingPro\Apps\*\ffmpeg.exe",
-                    r"C:\Users\lanpang\AppData\Roaming\bilibili\ffmpeg\ffmpeg.exe"):
+                    os.path.join(_appdata, "bilibili", "ffmpeg", "ffmpeg.exe")):
+            if not pat:
+                continue
             hits = sorted(_glob.glob(pat))
             if hits:
                 ff = hits[-1]

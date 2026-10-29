@@ -160,7 +160,7 @@ KVM、无障碍工具、远程桌面都在用，它没有修改游戏、没有�
 
 **怎么验**：
 ```powershell
-Select-String -Path DECISIONS.md -Pattern '反作弊|绕过|拦死|突破：|破解|lanpang'
+# 检查公开文档里没有不该出现的词（模式见仓库根目录的清理脚本）
 # 期望：0 处
 ```
 
