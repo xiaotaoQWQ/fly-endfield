@@ -125,6 +125,11 @@ def main():
     # 为什么这么大：实测贴墙时原地转 20° 根本不够脱离，
     # 4 拍 × (3.5×40×2.5 px) = 350px/拍 ≈ 22.6°/拍 ≈ 90°，才拐得出去。
     ap.add_argument("--escape-ticks", type=int, default=4)
+    # ★ 撞墙逃逸的退出条件：从进入逃逸起**累计位移**超过它才算走出来了。
+    #   固定拍数退出会导致"转完就回撞同一堵墙"（实测日志见过 4 拍就回撞）。
+    ap.add_argument("--escape-dist", type=float, default=40.0,
+                    help="撞墙逃逸要累计走够多少地图像素才退出（默认 40）。"
+                         "太小会回撞同一堵墙，太大则绕远路")
     ap.add_argument("--stuck-sec", type=float, default=3.0,
                     help="小地图连续静止这么多秒才算「卡住」（默认 3 秒）。"
                          "按时间算，不按拍数 —— 原来 3 拍在 2.5Hz 下只有 1.2 秒，"
@@ -1333,6 +1338,8 @@ def main():
         walk_lock = 0
         traj = []
         counts = dict(left=0, right=0, jump=0, sprint=0, esc=0, stuck=0)
+        # ★ 撞墙逃逸的累计位移（None = 不在逃逸中）
+        esc_run = None
         logbuf: list = []
         spikes_total = 0
         steps_total = 0
@@ -1772,16 +1779,26 @@ def main():
                 esc = False
                 if (not args.no_escape and ts >= args.escape_grace
                         and not (m_on and not args.escape_in_combat)):
-                    if escape_left > 0:
-                        esc = True
-                        escape_left -= 1
-                        if escape_left == 0:
+                    # ★★ 逃逸是**状态**不是**计时**（2026-10-29 改）
+                    #
+                    #   原实现：stuck 之后只逃逸 escape_ticks 拍，转完就把控制权
+                    #   还给大脑 → 大脑按趋光/趋味把方向拉回 → 又撞同一堵墙。
+                    #   实测日志：[73.8s] ESC [74.2s] ESC [74.6s] ESC
+                    #             [75.4s] MOVE ← 4 拍就回撞了
+                    #
+                    #   现实现：进入后一直逃逸，直到**累计真的走了够远**
+                    #   （--escape-dist，默认 40 地图像素）才把控制权还回去。
+                    if esc_run is None and stuck_now:
+                        esc_run = 0.0            # 进入逃逸
+                    if esc_run is not None:
+                        esc_run += float(od.get("dist") or 0.0)
+                        if esc_run >= args.escape_dist:
+                            esc_run = None       # 真的走出来了
                             walk_lock = args.walk_lock
-                    elif walk_lock > 0:
-                        walk_lock -= 1
-                    elif stuck_now:
-                        esc = True
-                        escape_left = max(0, args.escape_ticks - 1)
+                        else:
+                            esc = True
+                    if esc and escape_left <= 0:
+                        escape_left = args.escape_ticks
 
                 esc_mult = args.escape_turn_mult if esc else 1.0
                 if pm is not None:
