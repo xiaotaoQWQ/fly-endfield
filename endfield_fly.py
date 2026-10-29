@@ -2288,6 +2288,9 @@ def main():
                           f"{'跳' if plan.jump else '  ':>3s} "
                           f"{'冲' if plan.sprint else '  ':>3s} "
                           f"{heading:>5.0f}° {od['speed']:>6.2f} "
+                          # ★ 测速可不可信：? = 测不准（小地图在转/对比度低），
+                          #   这时 od['stuck'] 会强制为 False —— 见 ef_vision.MapOdometry
+                          f"{'!' if not od.get('trust', True) else ' ':>2s}"
                           f"{'卡' if od['stuck'] else '  ':>3s}  "
                           f"{'FLEE ' if esc else ''}{action_txt}")
 

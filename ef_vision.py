@@ -238,7 +238,8 @@ class MapOdometry:
         if ref is None or ref[1].shape != g.shape:
             self.last = dict(dx=0.0, dy=0.0, dist=0.0, speed=0.0,
                              heading=self.heading, sharp=0.0, stuck=False,
-                             cursor=bool(cm.any()), primed=False)
+                             cursor=bool(cm.any()), primed=False,
+                             trust=False)
             return self.last
 
         dt = max(t - ref[0], 1e-3)
@@ -251,8 +252,33 @@ class MapOdometry:
         dist = float(np.hypot(wx, wy))
         self.speed = dist / dt
 
-        if self.speed < self.min_speed or sharp < 1.3:
-            # 静止：第一次静止时记下时间戳，之后按经过时长判卡
+        # ★★ 「测不准」≠「没在动」（2026-10-29 修）
+        #
+        #   原来写的是 `speed < min_speed or sharp < 1.3` → 判静止。
+        #   但 sharp 是相位相关峰值的锐度：小地图**对比度低或正在旋转**时
+        #   会掉到 1.3 以下 —— 于是「测不准」被当成「没在动」，
+        #   实测 252 拍里 72 拍（28.6%）误判成卡住，用户反馈
+        #   「很多没有卡墙的时候也触发」。
+        #
+        #   ★ 小地图在转头时会旋转，而 phase_shift 是**纯平移**相关 ——
+        #     所以只要它在转，就必然测不准。
+        #
+        #   现在分成三态：
+        #     sharp 低      → unknown：不判卡、也不清计时（保持原状）
+        #     速度 < 阈值   → 真的静止：起计时
+        #     否则          → 在动：清计时
+        #
+        #   这和「逃逸只转不走 → dist 恒为 0 → 条件永不满足」是同一类错误：
+        #     **「没有数据」和「数据说没有」是两件事。**
+        self.trust = sharp >= 1.3          # 这一次的测速可不可信
+        if not self.trust:
+            # 测不准 → **也要把计时器清掉**。
+            #   只写 pass 是不够的：如果 _still_t0 之前已经设上，
+            #   测不准期间 still_sec 会继续增长 → 仍然误判。
+            #   清掉之后，「卡住」必须是「连续 stuck_sec 秒**都测得准且没动**」。
+            self._still_t0 = None
+            self.stuck_ticks = 0
+        elif self.speed < self.min_speed:
             if self._still_t0 is None:
                 self._still_t0 = t
             self.stuck_ticks += 1
@@ -274,7 +300,8 @@ class MapOdometry:
                          heading=self.heading, sharp=sharp, stuck=self.stuck_now,
                          still_sec=(0.0 if self._still_t0 is None
                                     else t - self._still_t0),
-                         cursor=bool(cm.any()), primed=True)
+                         cursor=bool(cm.any()), primed=True,
+                         trust=bool(getattr(self, "trust", False)))
         return self.last
 
     def reset(self):
