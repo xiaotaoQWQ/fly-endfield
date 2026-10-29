@@ -273,6 +273,100 @@ class OnnxDetect:
                 + (" " + " ".join(bits) if bits else ""))
 
 
+
+# ---------------------------------------------------------------- 线程版
+class OnnxThread:
+    """ONNX 推理独立线程。
+
+    ★ 和 `EyeThread`（`ef_eye.py`，30 Hz）同一个套路：
+      主循环 `submit()` 投帧（非阻塞）→ 线程推理 → 主循环 `read()` 拿最新结果。
+
+    ★ 为什么不直接在主循环里推理（实测过）：
+        离线 96 ms、实机 168 ms、CPU 争用严重时 249 ms ——
+        249 + 87（截图）= 336 / 400 ms 预算，卡一下就掉拍。
+      挪到独立线程之后主循环立刻返回，节拍稳在 2.5 Hz。
+
+    ★ 线程只保留**最新一帧**，不排队 ——
+      排队的话推理追不上，结果会越来越旧（而且内存会涨）。
+      「丢掉旧帧、永远只算最新的」是这类实时视觉的正确做法。
+    """
+
+    def __init__(self, det: "OnnxDetect", hz: float = 6.0, verbose: bool = True):
+        import threading
+        self.det = det
+        self.period = 1.0 / max(0.5, float(hz))
+        self.latest = None            # 最近一次结果（dict）
+        self._frame = None            # 待处理帧（只保留最新）
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._th = None
+        self.n_run = 0
+        self.n_skip = 0               # 丢掉了多少帧（推不过来）
+        self.ms = 0.0
+        self.fps = 0.0
+        self.verbose = verbose
+        if verbose:
+            print(f"ONNX 线程：目标 {hz:.1f} Hz（独立线程，主循环不等它）")
+
+    # ------------------------------------------------------------------
+    def start(self):
+        import threading
+        self._th = threading.Thread(target=self._run, name="onnx", daemon=True)
+        self._th.start()
+        return self
+
+    def stop(self):
+        self._stop.set()
+        if self._th is not None:
+            self._th.join(timeout=3.0)
+
+    def submit(self, frame):
+        """投一帧（非阻塞）。线程只保留最新的一帧，旧的直接丢。"""
+        with self._lock:
+            if self._frame is not None:
+                self.n_skip += 1
+            self._frame = frame
+
+    def read(self):
+        """拿最近一次结果。还没算出来时返回 None。"""
+        return self.latest
+
+    # ------------------------------------------------------------------
+    def _run(self):
+        import time
+        t_last = 0.0
+        while not self._stop.is_set():
+            with self._lock:
+                frame = self._frame
+                self._frame = None
+            if frame is None:
+                time.sleep(0.005)
+                continue
+
+            st = self.det.step(frame)
+            self.latest = st
+            self.n_run += 1
+            self.ms = float(st.get("ms", 0.0))
+
+            # 估算实际跑到的 Hz
+            now = time.time()
+            if t_last:
+                _dt = now - t_last
+                if _dt > 0:
+                    self.fps = 0.9 * self.fps + 0.1 * (1.0 / _dt) if self.fps else 1.0 / _dt
+            t_last = now
+
+            # 让出一点 CPU（主循环要跑 numpy）
+            if self.ms < self.period * 1000:
+                time.sleep(min(0.05, self.period - self.ms / 1000.0))
+
+    # ------------------------------------------------------------------
+    def describe(self) -> str:
+        if self.latest is None:
+            return "ONNX线程：还没结果"
+        return (f"ONNX {self.latest.get('n_det', 0)}框 {self.ms:.0f}ms "
+                f"{self.fps:.1f}Hz" + (f" 丢{self.n_skip}" if self.n_skip else ""))
+
 # ---------------------------------------------------------------- 自检
 def _selftest():
     """自检：预处理、NMS、缺模型的降级、真实模型的输出格式。

@@ -348,6 +348,9 @@ def main():
                     help="关掉 ONNX 识别，强制用模板检测")
     ap.add_argument("--onnx-conf", type=float, default=0.35,
                     help="检测置信度阈值（默认 0.35；实测真检测 0.77~0.93）")
+    ap.add_argument("--onnx-hz", type=float, default=6.0,
+                    help="ONNX 推理线程的频率（默认 6 Hz）。"
+                         "推理本身约 100~250 ms，实际能到 4~6 Hz")
     ap.add_argument("--onnx-model", default="",
                     help="模型路径（默认 models/autofightv13.onnx）")
 
@@ -750,6 +753,8 @@ def main():
                 ("ONNX 框数", f.get("onnx_n", 0) if f.get("onnx_ok") else "—"),
                 ("ONNX 耗时", (f"{f.get('onnx_ms', 0):.0f} ms"
                                if f.get("onnx_ok") else "—")),
+                ("ONNX 线程", (f"{f.get('onnx_fps', 0):.1f} Hz 丢{f.get('onnx_skip', 0)}"
+                                if f.get("onnx_ok") else "—")),
                 ("ONNX 连携", ("★是" if f.get("onnx_combo") else "否")
                  if f.get("onnx_ok") else "—"),
                 ("ONNX 大招", ("就绪" if f.get("onnx_end") else "—")
@@ -1270,13 +1275,20 @@ def main():
     # ---- ONNX 识别（MaaEnd YOLO11s）----
     # 缺模型 / 没装 onnxruntime 时 onnx_det.ok = False，下面会退回模板检测。
     onnx_det = None
+    onnx_th = None
     if args.onnx and not args.no_onnx:
         from onnx_detect import OnnxDetect
         _omp = args.onnx_model or None
         onnx_det = OnnxDetect(_omp, conf=args.onnx_conf) if _omp else \
             OnnxDetect(conf=args.onnx_conf)
         if onnx_det.ok:
-            print(f"  ★ ONNX 识别已启用（替代连携技模板检测）")
+            # ★ 推理放独立线程 —— 实测同步调要 168~249 ms，会和主循环抢 CPU，
+            #   249+87(截图)=336/400ms 预算，卡一下就掉拍。
+            #   线程版主循环只 submit/read，立刻返回。
+            from onnx_detect import OnnxThread
+            onnx_th = OnnxThread(onnx_det, hz=args.onnx_hz).start()
+            print(f"  ★ ONNX 识别已启用（独立线程 {args.onnx_hz:.0f} Hz，"
+                  f"替代连携技模板检测）")
 
     # ---- 「挑战成功」检测（副本完成）----
     # ★ 用户要求：任务完成时给 50 次奖励 + 饥饿值不再上升。
@@ -1444,11 +1456,16 @@ def main():
                 # ★★ 必须放在所有检测**之前** —— 连携技判断要用它的结果。
                 #    （第一版插到了连携技后面，直接 UnboundLocalError 崩了）
                 st_onnx = None
-                if onnx_det is not None and onnx_det.ok and lf.img is not None:
-                    st_onnx = onnx_det.step(lf.img)
+                if onnx_th is not None and lf.img is not None:
+                    # 投帧（不阻塞）+ 拿最近一次结果（可能比这一拍旧一点，
+                    # 但战斗状态变化没那么快，够用）
+                    onnx_th.submit(lf.img)
+                    st_onnx = onnx_th.read()
                     # ⚠ 这里要用 forager 不是 fod —— fod 是后面觅食块才绑定的
                     #   （第一版用了 fod，直接 UnboundLocalError）
-                    if forager is not None:
+                    # ⚠ st_onnx 可能是 None —— 线程第一拍还没出结果。
+                    #   （thread 版的 read() 在第一拍必然返回 None）
+                    if forager is not None and st_onnx is not None:
                         forager["onnx_ok"] = bool(st_onnx["ok"])
                         forager["onnx_ms"] = float(st_onnx["ms"])
                         forager["onnx_n"] = int(st_onnx["n_det"])
@@ -2127,6 +2144,8 @@ def main():
         f_onnx_end=(bool(forager.get('onnx_end')) if forager else False),
         f_onnx_hp=(int(forager.get('onnx_hp_danger', 0)) if forager else 0),
         f_onnx_cf=(int(forager.get('onnx_combo_full', 0)) if forager else 0),
+        f_onnx_fps=(round(float(getattr(onnx_th, 'fps', 0) or 0), 1) if onnx_th else 0),
+        f_onnx_skip=(int(getattr(onnx_th, 'n_skip', 0) or 0) if onnx_th else 0),
                                  cm_mark=bool(m_on),
                                  cm_evac=bool(m_evac) if emark is not None else False,
                                  cm_evac_corr=(round(emark.corr, 3) if emark else ''),
