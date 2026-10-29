@@ -336,8 +336,12 @@ def main():
                          "此时**绝不按 E**（免得乱按浪费冷却）")
     ap.add_argument("--combo-key", default="e", choices=["e", "q", "f", "r"],
                     help="连携技键，默认 E")
-    ap.add_argument("--combo-hunger", type=float, default=0.99,
-                    help="饥饿值 ≥ 它才按连携技（默认 0.99，也就是「到 1 了」）")
+    ap.add_argument("--combo-hunger", type=float, default=0.0,
+                    help="饥饿值 ≥ 它才按连携技（默认 0 = 有提示就按）。"
+                         "★ 原来默认 0.99（饿到极点才放）—— 但连携技是"
+                         "**敌人给的机会**，和饿不饿没关系；那个条件是从"
+                         "「饿疯了才放大招」的设计里继承下来的，套错了对象。"
+                         "实测：战斗前 20 秒 h=0.70~0.95，一次都没按。")
     # ============ ONNX 识别（MaaEnd 的 YOLO11s 模型）============
     # ★ 一次推理给出所有战斗 UI 的框+标签+置信度，不需要标定任何 ROI。
     #   目前只用来替换连携技判断（那一块用模板/颜色反复翻车）。
@@ -2003,6 +2007,13 @@ def main():
                             #     [9.6s] 第1次 [10.1s] 第2次 [10.5s] 第3次 [11.0s] 第4次
                             _combo_edge = bool(m_combo) and not fod.get("combo_was", False)
                             fod["combo_was"] = bool(m_combo)
+                            # ★ 诊断计数：区分「饿饿拦住」和「上升沿漏检」
+                            #   seen   = 看到提示的上升沿次数
+                            #   blocked= 因为饿饿不够而没按的次数
+                            if _combo_edge:
+                                fod["n_combo_seen"] = fod.get("n_combo_seen", 0) + 1
+                                if fod["hg"].h < args.combo_hunger:
+                                    fod["n_combo_blocked"] = fod.get("n_combo_blocked", 0) + 1
                             if (_combo_edge
                                     and fod["hg"].h >= args.combo_hunger
                                     and ts - fod["last_combo"] >= args.combo_cool):
@@ -2164,6 +2175,8 @@ def main():
         f_onnx_end=(bool(forager.get('onnx_end')) if forager else False),
         f_onnx_hp=(int(forager.get('onnx_hp_danger', 0)) if forager else 0),
         f_onnx_cf=(int(forager.get('onnx_combo_full', 0)) if forager else 0),
+        f_combo_seen=(int(forager.get('n_combo_seen', 0)) if forager else 0),
+        f_combo_blocked=(int(forager.get('n_combo_blocked', 0)) if forager else 0),
         f_onnx_fps=(round(float(getattr(onnx_th, 'fps', 0) or 0), 1) if onnx_th else 0),
         f_onnx_skip=(int(getattr(onnx_th, 'n_skip', 0) or 0) if onnx_th else 0),
                                  cm_mark=bool(m_on),
@@ -2450,7 +2463,9 @@ def main():
                                                        rewards=forager["n_reward"],
                                                        punish=forager["n_punish"]))
                     print(f"  补丁已存：{_n:,} 条边 · 漂移 "
-                          f"{forager['mb'].drift:.1f} · 奖赏 {forager['n_reward']} "
+                          f"连携 看到{forager.get('n_combo_seen', 0)}次/按{forager['n_combo']}次"
+        f"（饥饿拦住 {forager.get('n_combo_blocked', 0)}）· "
+        f"{forager['mb'].drift:.1f} · 奖赏 {forager['n_reward']} "
                           f"惩罚 {forager['n_punish']} → {args.forage_patch}")
                 except Exception as _e:
                     print(f"  ⚠ 关窗前存补丁失败：{type(_e).__name__}: {_e}")
