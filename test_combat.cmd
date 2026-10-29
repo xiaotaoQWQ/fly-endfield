@@ -12,9 +12,14 @@ REM  the game at all.
 REM
 REM  What this does:
 REM    - real run (no --dry): actually presses keys
-REM    - ONNX recognition enabled (threaded, ~6 Hz)
-REM    - combo / skill / ultimate enabled
-REM    - NO --overlay, so nothing covers the screen
+REM    - ONNX recognition on its own thread. The bottom-right corner
+REM      of the overlay shows:  ONNX 15box 125ms  combo!  ult
+REM      hp-warn  combo3/4
+REM    - big overlay panel so you can watch what it decides
+REM      (overlay sits at y 0..300; the combo badge is at y 554
+REM       and the character bars at y 1308 - nothing important
+REM       gets covered)
+REM    - live status page:  http://127.0.0.1:9120
 REM    - 300 seconds
 REM
 REM  Log: out\combat_test.log
@@ -40,7 +45,10 @@ python -u -X utf8 endfield_fly.py ^
     --hz 2.5 ^
     --motor pop ^
     --eye main --eye-hz 30 ^
+    --overlay ^
+    --tune --tune-port 9120 ^
     --forage --evac --auto-outcome --combo --skill-auto --ult ^
+    --combo-hunger 0.0 ^
     --attack-hold 1.0 ^
     --onnx-hz 6 ^
     --seconds 300 ^
@@ -49,5 +57,6 @@ python -u -X utf8 endfield_fly.py ^
 
 echo.
 echo   Done. Log: out\combat_test.log
+echo   Live page was: http://127.0.0.1:9120
 echo.
 pause

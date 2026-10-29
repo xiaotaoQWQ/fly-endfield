@@ -425,17 +425,46 @@ class FlyPanel:
             d.text((277, yy - 1), f"已吃饱 {_hold:4.1f}s", font=self.f_tiny,
                    fill=(20, 16, 4))
 
-        # ★ ONNX 识别状态（一眼看出模型在不在工作）
+        # ★ ONNX 识别状态 —— 判断模型工不工作就看这里。
+        #
+        # ⚠ 位置：原来放在 x=392，和「攻击驱动力」那块重叠了 ✗
+        #   觅食条第 1 行 x>1200 是空的，放那儿。
+        _ox = 1210
         if st.get("f_onnx"):
             _ms = float(st.get("f_onnx_ms") or 0)
-            _txt = f"ONNX {int(st.get('f_onnx_n') or 0)}框 {_ms:.0f}ms"
-            d.rectangle([392, yy - 2, 520, yy + 15], fill=(20, 40, 30))
-            d.text((397, yy - 1), _txt, font=self.f_tiny, fill=(120, 220, 160))
+            _n = int(st.get("f_onnx_n") or 0)
+            d.rectangle([_ox - 4, yy - 2, _ox + 150, yy + 15], fill=(20, 40, 30))
+            d.text((_ox, yy - 1), f"ONNX {_n}框 {_ms:.0f}ms",
+                   font=self.f_tiny, fill=(120, 220, 160))
+            _x = _ox + 156
+            # 连携提示（瞬时）
             if st.get("f_onnx_combo"):
-                d.rectangle([526, yy - 2, 600, yy + 15], fill=(60, 30, 70))
-                d.text((531, yy - 1), "连携!", font=self.f_tiny, fill=(230, 160, 255))
+                d.rectangle([_x, yy - 2, _x + 60, yy + 15], fill=(60, 30, 70))
+                d.text((_x + 4, yy - 1), "连携!", font=self.f_tiny,
+                       fill=(230, 160, 255))
+            else:
+                d.text((_x + 3, yy), "连携-", font=self.f_tiny, fill=FAINT)
+            _x += 64
+            # 大招就绪
+            if st.get("f_onnx_end"):
+                d.rectangle([_x, yy - 2, _x + 52, yy + 15], fill=(70, 60, 20))
+                d.text((_x + 4, yy - 1), "大招", font=self.f_tiny,
+                       fill=(255, 230, 120))
+            _x += 56
+            # 血危人数
+            _nd = int(st.get("f_onnx_hp") or 0)
+            if _nd:
+                d.rectangle([_x, yy - 2, _x + 62, yy + 15], fill=(70, 20, 20))
+                d.text((_x + 4, yy - 1), f"血危{_nd}", font=self.f_tiny,
+                       fill=(255, 140, 140))
+            _x += 66
+            # 连携能量条满几个
+            _cf = int(st.get("f_onnx_cf") or 0)
+            d.text((_x + 3, yy), f"连携{_cf}/4", font=self.f_tiny,
+                   fill=(150, 200, 255) if _cf else FAINT)
         else:
-            d.text((392, yy), "ONNX 未启用", font=self.f_tiny, fill=FAINT)
+            d.text((_ox, yy), "ONNX 未启用（缺模型）",
+                   font=self.f_tiny, fill=FAINT)
 
         # 气味状态
         if st.get("f_odor"):
