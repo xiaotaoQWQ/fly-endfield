@@ -44,3 +44,6 @@ HANDOFF.md
 # ---- MaaEnd 调研探针（第三方源码，本地参考用）----
 _maa_probe/
 *.onnx
+
+# 证据图（对比 ONNX vs 模板的误报）
+!shots/combo_dispute.png
