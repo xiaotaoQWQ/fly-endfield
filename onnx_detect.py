@@ -57,7 +57,9 @@ END_SKILL = "EndSkillFull"                 # 终结技（大招）就绪
 ENERGY_FULL = "EnergyLevelFull"
 ENERGY_EMPTY = "EnergyLevelEmpty"
 ENEMY_ATTACK = "EnemyAttackGroundCharging"  # 敌人地面攻击蓄力
-ENEMY_CHARGE = "EnemyAccumulatingPower"
+ENEMY_CHARGE = "EnemyAccumulatingPower"     # 敌人蓄力
+# ★ 这个标签字面就是「该闪避的地面攻击」——直接拿来当闪避信号
+ENEMY_DODGE = "EnemyAttackGroundDodge"
 ENEMY_TARGET = "EnemyTarget"
 
 # 每个角色一个槽位（屏幕底部左侧 4 条能量/血条）
@@ -238,9 +240,20 @@ class OnnxDetect:
             for i, d in enumerate(items):
                 out[key][i] = True
 
+        # 诊断：三个预警标签各亮几次（放到 state 里，面板/日志能看）
+        out["threat_labels"] = {
+            ENEMY_ATTACK: len(by_name.get(ENEMY_ATTACK, [])),
+            ENEMY_CHARGE: len(by_name.get(ENEMY_CHARGE, [])),
+            ENEMY_DODGE: len(by_name.get(ENEMY_DODGE, [])),
+        }
         out["end_skill"] = bool(by_name.get(END_SKILL))
+        # ★ 三个预警标签任一为真就算「有威胁」：
+        #   Charging = 地面攻击蓄力 / AccumulatingPower = 蓄力 / Dodge = 该闪了
+        #   实测（428 帧录制）这三个几乎不亮（0~0.2%），但实机分辨率更高，
+        #   值得先接上跑一次看数据，别凭录制就下结论。
         out["enemy_attack"] = bool(by_name.get(ENEMY_ATTACK)
-                                   or by_name.get(ENEMY_CHARGE))
+                                   or by_name.get(ENEMY_CHARGE)
+                                   or by_name.get(ENEMY_DODGE))
         out["energy"] = 2 if by_name.get(ENERGY_FULL) else (
             0 if by_name.get(ENERGY_EMPTY) else 1)
         sel = by_name.get(CHAR_SELECT)

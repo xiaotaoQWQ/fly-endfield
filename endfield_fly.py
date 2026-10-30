@@ -276,6 +276,14 @@ def main():
                          "不用重启。改完下一拍自动生效")
     ap.add_argument("--tune-port", type=int, default=8791,
                     help="调参面板端口（默认 8791）")
+    # ★ 闪避：Shift 点一下。体力有限、只能连放 2 次，所以必须有冷却。
+    ap.add_argument("--dodge", action="store_true", default=True,
+                    help="威胁出现时自动闪避（默认开）")
+    ap.add_argument("--no-dodge", action="store_true",
+                    help="关掉自动闪避")
+    ap.add_argument("--dodge-cool", type=float, default=1.2,
+                    help="两次闪避的最小间隔（默认 1.2 秒）。"
+                         "游戏里闪避消耗体力、只能连放 2 次，所以不能狂按")
     ap.add_argument("--attack-hold", type=float, default=1.0,
                     help="★ 普攻按住多少秒（默认 1.0）。改长按后时长超过决策拍"
                          "（400ms），所以按下/抬起落在**不同的拍**上 —— "
@@ -1048,6 +1056,29 @@ def main():
                 if jump:
                     ic.tap("space", 0.09, kb)
 
+            def dodge(self):
+                """闪避 = **点一下 Shift**（2026-10-30 加）
+
+                机制（已查证）：
+                  · Shift 点一下     = 闪避（消耗体力，能连放 2 次）
+                  · Shift 按住 + 方向 = 冲刺
+                  · 敌人攻击瞬间闪    = 极限闪避（大量回复技力）
+
+                ★ 为什么必须先松：
+                  我们的 sprint 也是 Shift（`_sync("sprint", ...)` 是**状态**，
+                  可能正按住）。按住状态下再 tap 不会产生新的按下沿，
+                  游戏收不到「闪」这个动作。
+                  所以先 `_sync("sprint", False)` + 物理 key_up，
+                  再 tap 一次 —— 这样必有一个干净的按下沿。
+
+                ★ 为什么 tap 而不是 key_down/up：
+                  `combat_press` 里已经用 tap 处理同类的短按键，
+                  按压 ~50ms 远短于决策拍 400ms，一次按压在同一拍内开始并结束。
+                """
+                self._sync("sprint", False)
+                ic.key_up("shift", kb)
+                ic.tap("shift", 0.05, kb)
+
             def combat_press(self, key: str):
                 """战斗键：做一次**阻塞式**点击。
 
@@ -1497,6 +1528,26 @@ def main():
                         forager["onnx_hp_danger"] = int(sum(st_onnx["hp_danger"]))
                         forager["onnx_combo_full"] = int(sum(st_onnx["combo_full"]))
                         forager["onnx_energy"] = int(st_onnx["energy"])
+
+                # ---- 闪避（Shift 点一下）----
+                # 威胁来源：ONNX 的三个预警标签（Charging / AccumulatingPower /
+                # GroundDodge）。实测录制上几乎不亮，但要先接上跑实机看数据 ——
+                # 实机 2560×1440 比录制的 720p 清楚得多。
+                #
+                # ⚠ 这里用 forager 不是 fod —— fod 是后面觅食块才绑定的
+                #   （和 ONNX 那段同一个坑，踩过一次就够了）。
+                if (args.dodge and not args.no_dodge and ex is not None
+                        and forager is not None
+                        and st_onnx is not None and st_onnx.get("ok")):
+                    if (st_onnx.get("enemy_attack")
+                            and ts - forager.get("last_dodge", -99.0)
+                            >= args.dodge_cool):
+                        ex.dodge()
+                        forager["last_dodge"] = ts
+                        forager["n_dodge"] = forager.get("n_dodge", 0) + 1
+                        print(f"  [{ts:6.1f}s] ★ 闪避 → Shift 点一下  "
+                              f"({st_onnx.get('threat_labels')}，"
+                              f"第 {forager['n_dodge']} 次）")
 
                 # 连携技（E）提示：只在战斗中、且能用的时候才出现
                 m_combo = False

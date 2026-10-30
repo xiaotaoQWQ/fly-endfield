@@ -48,7 +48,7 @@ python -u -X utf8 endfield_fly.py ^
     --overlay ^
     --tune --tune-port 9120 ^
     --forage --evac --auto-outcome --combo --skill-auto --ult ^
-    --combo-hunger 0.0 ^
+    --combo-hunger 0.0 --dodge-cool 1.2 ^
     --attack-hold 1.0 ^
     --onnx-hz 6 ^
     --seconds 300 ^
