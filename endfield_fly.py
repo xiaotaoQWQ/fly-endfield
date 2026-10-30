@@ -879,6 +879,18 @@ def main():
     print()
 
     win = find_endfield()
+    # ★ 启动时把游戏置前 —— 否则 grab() 抓的是挡在上面的窗口
+    #   （实测抓到过 94 帧 Windows 资源管理器）。失败也不致命，只是提示。
+    if win is not None:
+        try:
+            from ef_shot import focus_game
+            if focus_game(win[0]):
+                print("  游戏窗口已置前 ✓")
+            else:
+                print("  ⚠ 置前失败 —— 请手动点一下游戏窗口，"
+                      "否则抓到的会是挡在前面的窗口")
+        except Exception:
+            pass
     if not win:
         sys.exit("终末地没在运行")
     hwnd, x, y, w, h = win

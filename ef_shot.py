@@ -50,6 +50,45 @@ class BITMAPINFO(ctypes.Structure):
     _fields_ = [("bmiHeader", BITMAPINFOHEADER), ("bmiColors", wintypes.DWORD * 3)]
 
 
+
+def focus_game(hwnd) -> bool:
+    """把游戏窗口置前，并确认真的在前台了。
+
+    ★ 为什么必须有这个：`grab(x, y, w, h)` 抓的是**屏幕坐标**，
+      不是窗口内容。游戏被任何窗口挡住 → 抓到的就是那个窗口
+      （实测抓到过 94 帧 Windows 资源管理器）。
+    返回 True = 确认在前台。
+    """
+    import ctypes
+    import time
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    try:
+        user32.ShowWindow(hwnd, 9)              # SW_RESTORE
+        # ★ Windows 不许**非前台进程**抢前台 → SetForegroundWindow 会静默失败。
+        #   经典绕法：先把窗口标成 TOPMOST 再取消，
+        #   这个动作会让系统把它当成「用户切过去」处理。
+        HWND_TOPMOST, HWND_NOTOPMOST = -1, -2
+        SWP_NOSIZE, SWP_NOMOVE = 0x0001, 0x0002
+        user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                            SWP_NOSIZE | SWP_NOMOVE)
+        user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                            SWP_NOSIZE | SWP_NOMOVE)
+        user32.SetForegroundWindow(hwnd)
+        user32.BringWindowToTop(hwnd)
+    except Exception:
+        return False
+    time.sleep(0.35)
+    return user32.GetForegroundWindow() == hwnd
+
+
+def is_foreground(hwnd) -> bool:
+    """游戏现在是不是在前台。"""
+    import ctypes
+    return ctypes.windll.user32.GetForegroundWindow() == hwnd
+
+
 def grab(x=0, y=0, w=None, h=None):
     if w is None:
         w = user32.GetSystemMetrics(0)
