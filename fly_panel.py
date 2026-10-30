@@ -472,6 +472,13 @@ class FlyPanel:
                 d.text((_x + 68, yy), f"{_raw:.2f}", font=self.f_tiny,
                        fill=((120, 220, 160) if _raw > 0.35
                              else (255, 200, 90)))
+            # ★ 连携菱形（MaaEnd 的 Combo.png）—— 看「祀的提示」有没有被这一路认出来
+            #   绿 = ≥0.80（会当成提示去按）；黄 = 0.60~0.80（擦边）；不显示 = 没认出来
+            _dia = float(st.get("f_combo_dia_corr") or 0)
+            if _dia > 0.05:
+                d.text((_x + 94, yy), (f"菱{_dia:.2f}" if _dia < 0.80 else "菱★"),
+                       font=self.f_tiny,
+                       fill=((120, 220, 160) if _dia >= 0.80 else (255, 200, 90)))
         else:
             d.text((_ox, yy), "ONNX 未启用（缺模型）",
                    font=self.f_tiny, fill=FAINT)

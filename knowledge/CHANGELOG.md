@@ -14,6 +14,40 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-10-30 · 连携提示改用 MaaEnd 的「菱形」模板 —— 解决祀不按连携
+
+**为什么**：ONNX 模型的 `CharacterComboActive` 认不出新角色「祀」（实机 combo_raw 恒 0，
+面板上只能看到擦边分）。原备选方案是「采集 375 帧 + 训一个小模型」，卡在等人采集。
+实际上 MaaEnd 的资源里本来就有一枚 `AutoFight/Combo.png` —— 它抓的是**提示圆环正上方
+那枚小白菱形 ⟡**，跟角色无关。
+
+**改哪**：
+- 新增 `templates/combo_diamond.npy`（源 16×11@1280，按项目约定存成内容尺度 **32×22**；来自 MaaEnd 的 Combo.png，AGPL-3.0，署名见 THIRD-PARTY.md）
+- `combat.py`：新增 `ComboDiamond(ComboMarker)` —— 区域内容 `(1490,500) 140×130`，阈值 0.80
+- `screen_profile.py`：`REGIONS["combo_diamond"]` + `TEMPLATES["combo_diamond"]=(1280,720)`
+- `endfield_fly.py`：`--combo-diamond`（默认开）/ `--no-combo-diamond` /
+  `--combo-diamond-corr` / `--combo-vote`；主循环 `m_combo = ONNX(combo_active) or 菱形`；
+  日志标出触发来源（`提示·onnx` / `提示·菱形`）；面板加「连携菱形」一行
+- `fly_panel.py`：右下角显示菱形原始分（绿 ≥0.80 / 黄 0.60~0.80）
+- 新增 `check_combo_diamond.py`：离线验证脚本（验收条件写死在代码里）
+
+**怎么验**：
+```bash
+python -X utf8 check_combo_diamond.py     # 退出码 0 = 通过
+# 期望：20261009 那份 2/428 命中（就是 0022、0040），误报 0；
+#       全库负样本最高 0.682 < 阈值 0.80；祀那张 2560 截图 0.952 命中
+```
+实机：`test_combat.cmd`（本来就带 `--combo`），日志里连携那行会写 `提示·菱形`。
+
+**坑**：
+1. **模板尺度**：Combo.png 是 1280 尺度的 16×11 —— `TEMPLATES` 里写成 2560 会被重采样成
+   32×22 对不上游戏里的 16×11，相关值整体偏低。`combo_e` 当年就栽在这。
+2. **它是连续多帧为真的信号**：951 帧那份有 119 帧命中、最长连续 13 帧。
+   必须靠上升沿（已有）+ 可选 `--combo-vote 3`；电平触发就是又一次「连按 11 次」。
+3. **负样本里有白屏**（Explorer / 白闪特效）能到 0.68 —— 阈值别压到 0.70 以下。
+
+---
+
 
 新增 `knowledge/08-本轮总结-2026-10-30.md`：
 - 识别层换成 MaaEnd YOLO11s（逐帧验证：旧模板 5 次误报，ONNX 0 次）

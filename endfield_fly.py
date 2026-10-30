@@ -33,7 +33,7 @@ import ctypes
 import os
 import sys
 import time
-from collections import Counter
+from collections import Counter, deque
 
 # ★ 兜底：把 stdout/stderr 设成 UTF-8 且**永不因编码报错**。
 #   打包成 exe 之后没有 `-X utf8` 那层保护，控制台默认 GBK ——
@@ -469,6 +469,24 @@ def main():
                          "提示一出现就会被按到。设 0 = 关掉这个兜底")
     ap.add_argument("--combo-cool", type=float, default=0.0,
                     help="连携技最小间隔秒数（默认 0 = 有提示就按，无冷却）")
+    # ============ 连携菱形（MaaEnd 的 Combo.png）============
+    # ★ 2026-10-30：ONNX 模型认不出新角色「祀」的连携提示（combo_raw 恒 0），
+    #   但提示圆环**正上方那枚小白菱形**跟角色无关 ——
+    #   MaaEnd 的资源里正好留着这枚 16×11 的模板（AGPL-3.0，署名见 NOTICE）。
+    #   实测 1515 帧：真提示 0.94~0.99、负样本最高 0.68；祀那张 2560 截图 0.952。
+    ap.add_argument("--combo-diamond", action="store_true", default=True,
+                    help="用 MaaEnd 的 Combo.png（环上方小白菱形）检测连携提示"
+                         "（默认开）。ONNX 认不出祀时靠它，两路取或")
+    ap.add_argument("--no-combo-diamond", action="store_true",
+                    help="关掉菱形模板，只用 ONNX / E 徽标模板")
+    ap.add_argument("--combo-diamond-corr", type=float, default=0.80,
+                    help="菱形模板相关阈值（默认 0.80 = MaaEnd 自己的值）。"
+                         "★ 实测：真提示 0.94~0.99、白屏/资源管理器这类负样本最高 0.68；"
+                         "0.85 更保守（空档 0.17），0.80 更不容易漏")
+    ap.add_argument("--combo-vote", type=int, default=1,
+                    help="菱形这一路要连续几帧过半才算数（默认 1 = 不防抖）。"
+                         "设 3 = 最近 3 拍里过半（约 0.4~0.8 秒延迟）；"
+                         "单帧噪声多的时候再开")
     ap.add_argument("--forage-decay", type=float, default=1e-4,
                     help="突触衰减（遗忘）。只增不减会漂走，跑几十次行为就崩")
     ap.add_argument("--forage-save-sec", type=float, default=30.0,
@@ -549,6 +567,12 @@ def main():
                             corr_min=args.combo_corr)
         print(f"  连携技：饥饿 ≥ {args.combo_hunger} 且提示出现 → 按 "
               f"{args.combo_key.upper()}（间隔 {args.combo_cool}s，0=无冷却）")
+
+    # ★ 连携菱形（MaaEnd 的 Combo.png）—— 认得出 ONNX 认不出的新角色（祀）
+    dmark = None
+    if args.combo and args.combo_diamond and not args.no_combo_diamond:
+        from combat import ComboDiamond
+        dmark = ComboDiamond(corr_min=args.combo_diamond_corr)
 
     # ================= 觅食闭环（《攻击奖励方案·第二版》）=================
     # 三层：饥饿值(动机) → 气味→接近→攻击(执行) → 奖赏→多巴胺→学习(价值)
@@ -793,6 +817,9 @@ def main():
                                if f.get("onnx_ok") else "—")),
                 ("ONNX 连携满", (f"{f.get('onnx_combo_full', 0)}/4"
                                  if f.get("onnx_ok") else "—")),
+                 ("连携菱形", (f"{'★是' if f.get('combo_dia') else '否'} "
+                               f"{f.get('combo_dia_corr', 0):+.3f}")
+                  if dmark else "—"),
                 ("自动打死", f["n_reward"]),
                 ("自动挨打", f["n_punish"]),
                 ("打到(小额)", f["n_hit"]),
@@ -939,6 +966,11 @@ def main():
         _t = prof.template("combo_e")
         if _t is not None:
             kmark.tpl = _t
+    if dmark is not None:
+        dmark.rect = prof.rect("combo_diamond")
+        _t = prof.template("combo_diamond")
+        if _t is not None:
+            dmark.tpl = _t
     # 自动奖惩的血条 / 受击红晕矩形（循环里是 `from auto_outcome import HP_RECT`，
     # 所以改模块全局变量就够了）
     import auto_outcome as _ao
@@ -955,6 +987,7 @@ def main():
           f"红环{cmark.rect if cmark else '—'} "
           f"撤离{emark.rect if emark else '—'} "
           f"连携{kmark.rect if kmark else '—'} "
+          f"菱形{dmark.rect if dmark else '—'} "
           f"血条{_ao.HP_RECT}")
 
     if eye is not None:
@@ -1247,6 +1280,9 @@ def main():
     print(f"战斗模式：{'开' if combat_on else '关'}"
           f"（按 {args.combat_key} 切换）· 攻击键 {args.attack_key}"
           f" · 技能键 {args.skill_key} · 方向{'让位' if args.combat_yield == 'attack' else '不让位'}")
+
+    # ★ 连携菱形的防抖窗口（--combo-vote；1 = 不防抖）
+    _dhist = deque(maxlen=max(1, int(args.combo_vote)))
 
     # ---- 录屏：**聚焦之后**才开录，免得把 UAC 弹窗/桌面录进去 ----
     rec = None
@@ -1583,17 +1619,44 @@ def main():
 
                 # 连携技（E）提示：只在战斗中、且能用的时候才出现
                 m_combo = False
+                _combo_src = "-"
                 # ★ 优先用 ONNX 的 CharacterComboActive（模型是专门为这个游戏训的，
                 #   比我们手抠的 30×28 徽标模板稳得多 —— 模板抓错过 UI 元素、
                 #   也在实机上误触发过）。
                 #   模型不可用时退回模板检测，不改变行为。
                 if st_onnx is not None and st_onnx["ok"]:
                     m_combo = bool(st_onnx["combo_active"])
+                    if m_combo:
+                        _combo_src = "onnx"
                 elif kmark is not None:
                     _kr = kmark.rect              # 用标定值，不依赖命令行
                     _kimg = lf.at(*_kr)
                     if _kimg is not None:
                         m_combo = kmark.step(_kimg)
+                        if m_combo:
+                            _combo_src = "徽标"
+
+                # ★ 连携菱形（MaaEnd 的 Combo.png）：ONNX 认不出祀，这枚认得出。
+                #   实测 1515 帧：真提示 0.94~0.99、负样本最高 0.68（白屏/资源管理器）。
+                #   两路是**取或**：模型认得出就用模型的，认不出靠菱形兜住。
+                _dia = False
+                _dia_corr = 0.0
+                if dmark is not None and lf.img is not None:
+                    _dimg = lf.at(*dmark.rect)
+                    if _dimg is not None:
+                        _dia = bool(dmark.step(_dimg))
+                        _dia_corr = float(dmark.corr)
+                        # --combo-vote>1 → 最近 N 拍里过半为真才算（防单帧噪声）
+                        _dhist.append(_dia)
+                        if args.combo_vote > 1:
+                            _dia = (sum(_dhist) * 2 > len(_dhist))
+                        if _dia:
+                            m_combo = True
+                            _combo_src = ("菱形" if _combo_src == "-"
+                                           else _combo_src + "+菱形")
+                if forager is not None:
+                    forager["combo_dia"] = bool(_dia)
+                    forager["combo_dia_corr"] = round(_dia_corr, 3)
 
                 # ---- 「挑战成功」：任务完成 ----
                 # ★ 用户要求：完成时给 **50 次奖励** + 饥饿值**不再上升**。
@@ -2241,7 +2304,7 @@ def main():
                                       f"  (饥饿 {fod['hg'].h:.2f}, "
                                       f"分 {_csc:.2f} {_cbox}, "
                                       f"选中槽 {_sel}, 满的槽 {_cf}, "
-                                      f"{'提示' if _combo_edge else '兜底'}, "
+                                      f"{('提示·' + _combo_src) if _combo_edge else '兜底'}, "
                                       f"第 {fod['n_combo']} 次)")
                     # 指令列表一律英文（用户要求）
                     action_txt += ("  EAT-ATK" if f_atk else "  HUNGRY")
@@ -2373,6 +2436,9 @@ def main():
         f_onnx_hp=(int(forager.get('onnx_hp_danger', 0)) if forager else 0),
         f_onnx_cf=(int(forager.get('onnx_combo_full', 0)) if forager else 0),
         f_onnx_combo_raw=(round(float(forager.get('onnx_combo_raw', 0)), 3)
+                          if forager else 0.0),
+        f_combo_dia=(bool(forager.get('combo_dia')) if forager else False),
+        f_combo_dia_corr=(round(float(forager.get('combo_dia_corr', 0)), 3)
                           if forager else 0.0),
         f_combo_seen=(int(forager.get('n_combo_seen', 0)) if forager else 0),
         f_combo_blocked=(int(forager.get('n_combo_blocked', 0)) if forager else 0),

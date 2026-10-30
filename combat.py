@@ -422,6 +422,57 @@ class ComboMarker:
         return (f"{'★ 连携技可用' if self.on else '不可用'}  相关 {self.corr:+.3f}")
 
 
+class ComboDiamond(ComboMarker):
+    """连携提示的**小白菱形**（提示圆环正上方那枚 ⟡）—— 为认出新角色「祀」。
+
+    ## 为什么要在 ONNX 之外再加一路
+
+    ONNX 模型（MaaEnd 的 autofightv13，2026-10-06 训）给出
+    `CharacterComboActive` 标签，但它**认不出祀**：实机 combo_raw 恒 0。
+    推断是祀比训练集新 —— 而且模型很可能是按「环里的头像」记特征的。
+
+    提示圆环正上方那枚菱形 ⟡ **跟角色无关**，MaaEnd 的资源里正好留着它的
+    模板：`AutoFight/Combo.png`（16×11，AGPL-3.0）。调研时已存进
+    `_maa_probe/AutoFight/`，这里拷成 `templates/combo_diamond.npy`。
+
+    ## 实测（1515 帧 = 3 份录屏 + 祀那张 2560 截图）
+
+    | 数据 | 真提示 | 负样本最高 |
+    |---|---|---|
+    | 20261009_173122（428 帧） | 0.960 / 0.941 | **0.492** |
+    | 20261008_002304（136 帧） | 0.938 ~ 0.965 | — |
+    | 20261008_002642（951 帧） | 0.98 | — |
+    | **祀（2560，模板重采样×2）** | **0.887** | — |
+
+    阈值 0.80 = MaaEnd 自己用的值，正负之间还留着 0.30 的空档。
+
+    ## 它和 combo_e（E 徽标模板）不是一回事
+
+    combo_e 抓的是左边的 E 键徽标（30×28），历史上在 0.51~0.65 的边缘值上
+    误报过 5 次 —— 就是「连携技连按 11 次」的元凶。这枚菱形更小、对比更强，
+    负样本最高只有 0.49。
+
+    ★ 但它是**连续多帧为真**的信号（951 帧那份有 119 帧连续命中），
+      所以外层必须配上升沿或多数帧防抖，不能电平触发。
+    """
+
+    def __init__(self, rect=None, tpl_path: str = None, corr_min: float = 0.80,
+                 verbose: bool = True):
+        if tpl_path is None:
+            tpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "templates", "combo_diamond.npy")
+        if rect is None:
+            rect = (1490, 500, 140, 130)      # 内容坐标（2560×1440）
+        super().__init__(rect, tpl_path=tpl_path, corr_min=corr_min,
+                         verbose=False)
+        if verbose:
+            if self.tpl is None:
+                print(f"连携菱形：**未标定**（缺 {tpl_path}）→ 这一路不生效")
+            else:
+                print(f"连携菱形：区域 {self.rect}（内容坐标）· 模板 "
+                      f"{self.tpl.shape[1]}×{self.tpl.shape[0]} · 相关 > {corr_min}"
+                      "（MaaEnd 的 Combo.png，认得出祀）")
+
 # ---------------------------------------------------------------- 自检
 def _selftest():
     """离线自检：验证 §五 的两条要求。
