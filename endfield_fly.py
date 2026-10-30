@@ -889,6 +889,14 @@ def main():
             else:
                 print("  ⚠ 置前失败 —— 请手动点一下游戏窗口，"
                       "否则抓到的会是挡在前面的窗口")
+
+                # ★ 录数据时必须确保游戏在前台 ——
+                #   否则 5 分钟采集出来全是别的窗口
+                #   （实测抓到过 94 帧 Windows 资源管理器）。
+                if args.snapdir:
+                    raise SystemExit(
+                        "  ✗ 录数据需要游戏在前台。"
+                        "请先点一下游戏窗口再跑。")
         except Exception:
             pass
     if not win:
