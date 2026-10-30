@@ -50,7 +50,7 @@ python -u -X utf8 endfield_fly.py ^
     --forage --evac --auto-outcome --combo --skill-auto --ult ^
     --combo-hunger 0.0 --dodge-cool 1.2 ^
     --attack-hold 1.0 ^
-    --onnx-hz 6 ^
+    --onnx-hz 6 --onnx-conf 0.22 ^
     --seconds 300 ^
     --stuck-sec 3.0 --escape-grace 10 ^
     --out out\combat_test.csv > out\combat_test.log 2>&1

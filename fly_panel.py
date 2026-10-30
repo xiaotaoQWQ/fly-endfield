@@ -462,6 +462,16 @@ class FlyPanel:
             _cf = int(st.get("f_onnx_cf") or 0)
             d.text((_x + 3, yy), f"连携{_cf}/4", font=self.f_tiny,
                    fill=(150, 200, 255) if _cf else FAINT)
+            # ★ 连携提示的**原始分**（不管阈值）——
+            #   看「祀的提示」到底有没有被模型认出来：
+            #     绿 = >0.35（会当成有效提示去按）
+            #     黄 = 0.10~0.35（认出来了但分数不够，被阈值挡掉）
+            #     不显示 = 模型压根没认出
+            _raw = float(st.get("f_onnx_combo_raw") or 0)
+            if _raw > 0.10:
+                d.text((_x + 68, yy), f"{_raw:.2f}", font=self.f_tiny,
+                       fill=((120, 220, 160) if _raw > 0.35
+                             else (255, 200, 90)))
         else:
             d.text((_ox, yy), "ONNX 未启用（缺模型）",
                    font=self.f_tiny, fill=FAINT)

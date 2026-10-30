@@ -147,6 +147,8 @@ class OnnxDetect:
                 self.names = {}
             if not self.names:
                 self.names = {i: str(i) for i in range(22)}
+            # 反向映射（名字 → 类下标），诊断原始分数要用
+            self.inv = {v: k for k, v in self.names.items()}
             self.ok = True
             if verbose:
                 print(f"ONNX 识别：{os.path.basename(self.model_path)} · "
@@ -166,7 +168,8 @@ class OnnxDetect:
                    combo_full=[False] * N_SLOTS, combo_empty=[False] * N_SLOTS,
                    hp_danger=[False] * N_SLOTS, hp_normal=[False] * N_SLOTS,
                    end_skill=False, enemy_attack=False,
-                   energy=0, char_select=None, n_det=0)
+                   energy=0, char_select=None, n_det=0,
+                   combo_raw=0.0, combo_raw_box=None)
         if not self.ok or frame_rgb is None:
             return out
 
@@ -191,6 +194,22 @@ class OnnxDetect:
         cls = raw[4:, :]
         best = cls.max(axis=0)
         bc = cls.argmax(axis=0)
+
+        # ★ 诊断：CharacterComboActive 的原始最高分（**不管阈值**）
+        #   用来区分两件事：
+        #     「模型根本没认出连携提示」      → combo_raw 一直很低
+        #     「认出来了但分数不够 0.35」    → combo_raw 在 0.15~0.35
+        #   用户反馈「祀出现了连携但是不按」，这两个原因的处理完全不同。
+        _ci = getattr(self, "inv", {}).get(COMBO_ACTIVE)
+        if _ci is not None and 0 <= _ci < cls.shape[0]:
+            _row = cls[_ci]
+            _j = int(_row.argmax())
+            out["combo_raw"] = float(_row[_j])
+            if out["combo_raw"] > 0.10:
+                _cx = (raw[0, _j] - raw[2, _j] / 2 - pl) / s
+                _cy = (raw[1, _j] - raw[3, _j] / 2 - pt) / s
+                out["combo_raw_box"] = (float(_cx), float(_cy))
+
         keep = best > self.conf
         if not keep.any():
             out.update(ok=True, ms=self.ms)

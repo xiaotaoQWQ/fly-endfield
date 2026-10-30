@@ -779,6 +779,8 @@ def main():
                                 if f.get("onnx_ok") else "—")),
                 ("ONNX 连携", ("★是" if f.get("onnx_combo") else "否")
                  if f.get("onnx_ok") else "—"),
+                ("ONNX 连携原始分", (f"{f.get('onnx_combo_raw', 0):.3f}"
+                                     if f.get("onnx_ok") else "—")),
                 ("ONNX 大招", ("就绪" if f.get("onnx_end") else "—")
                  if f.get("onnx_ok") else "—"),
                 ("ONNX 血危", (f"{f.get('onnx_hp_danger', 0)} 人"
@@ -1528,6 +1530,10 @@ def main():
                         forager["onnx_hp_danger"] = int(sum(st_onnx["hp_danger"]))
                         forager["onnx_combo_full"] = int(sum(st_onnx["combo_full"]))
                         forager["onnx_energy"] = int(st_onnx["energy"])
+                        # ★ 诊断：连携提示的**原始分**（不管阈值）。
+                        #   用来区分「模型没认出祀的提示」和「认出了但分数不够」。
+                        forager["onnx_combo_raw"] = float(
+                            st_onnx.get("combo_raw") or 0.0)
 
                 # ---- 闪避（Shift 点一下）----
                 # 威胁来源：ONNX 的三个预警标签（Charging / AccumulatingPower /
@@ -2324,6 +2330,8 @@ def main():
         f_onnx_end=(bool(forager.get('onnx_end')) if forager else False),
         f_onnx_hp=(int(forager.get('onnx_hp_danger', 0)) if forager else 0),
         f_onnx_cf=(int(forager.get('onnx_combo_full', 0)) if forager else 0),
+        f_onnx_combo_raw=(round(float(forager.get('onnx_combo_raw', 0)), 3)
+                          if forager else 0.0),
         f_combo_seen=(int(forager.get('n_combo_seen', 0)) if forager else 0),
         f_combo_blocked=(int(forager.get('n_combo_blocked', 0)) if forager else 0),
         f_onnx_fps=(round(float(getattr(onnx_th, 'fps', 0) or 0), 1) if onnx_th else 0),
