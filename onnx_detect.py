@@ -60,6 +60,9 @@ ENEMY_ATTACK = "EnemyAttackGroundCharging"  # 敌人地面攻击蓄力
 ENEMY_CHARGE = "EnemyAccumulatingPower"     # 敌人蓄力
 # ★ 这个标签字面就是「该闪避的地面攻击」——直接拿来当闪避信号
 ENEMY_DODGE = "EnemyAttackGroundDodge"
+# ★★ MaaEnd 的**主力**闪避信号（2026-10-30 补：我们一开始漏了它）。
+#   它的判据是 GetEnemyAttackGroundDodge() || GetEnemyDodge()，两路取或。
+ENEMY_DODGE_MAIN = "EnemyDodge"
 ENEMY_TARGET = "EnemyTarget"
 
 # 每个角色一个槽位（屏幕底部左侧 4 条能量/血条）
@@ -167,7 +170,8 @@ class OnnxDetect:
         out = dict(ok=False, ms=0.0, dets=[], combo_active=False,
                    combo_full=[False] * N_SLOTS, combo_empty=[False] * N_SLOTS,
                    hp_danger=[False] * N_SLOTS, hp_normal=[False] * N_SLOTS,
-                   end_skill=False, enemy_attack=False,
+                   end_skill=False, enemy_attack=False, threat_max=0.0,
+                   threat_labels={},
                    energy=0, char_select=None, n_det=0,
                    combo_raw=0.0, combo_raw_box=None)
         if not self.ok or frame_rgb is None:
@@ -264,7 +268,14 @@ class OnnxDetect:
             ENEMY_ATTACK: len(by_name.get(ENEMY_ATTACK, [])),
             ENEMY_CHARGE: len(by_name.get(ENEMY_CHARGE, [])),
             ENEMY_DODGE: len(by_name.get(ENEMY_DODGE, [])),
+            ENEMY_DODGE_MAIN: len(by_name.get(ENEMY_DODGE_MAIN, [])),
         }
+        # ★ 原始分（不管阈值之上还是之下都记最高分）——
+        #   用来区分「没威胁」和「有威胁但分数不够」，和 combo_raw 一个道理。
+        out["threat_max"] = float(max(
+            [d["score"] for d in dets
+             if d["label"] in (ENEMY_ATTACK, ENEMY_CHARGE,
+                               ENEMY_DODGE, ENEMY_DODGE_MAIN)] or [0.0]))
         out["end_skill"] = bool(by_name.get(END_SKILL))
         # ★ 三个预警标签任一为真就算「有威胁」：
         #   Charging = 地面攻击蓄力 / AccumulatingPower = 蓄力 / Dodge = 该闪了
@@ -272,7 +283,8 @@ class OnnxDetect:
         #   值得先接上跑一次看数据，别凭录制就下结论。
         out["enemy_attack"] = bool(by_name.get(ENEMY_ATTACK)
                                    or by_name.get(ENEMY_CHARGE)
-                                   or by_name.get(ENEMY_DODGE))
+                                   or by_name.get(ENEMY_DODGE)
+                                   or by_name.get(ENEMY_DODGE_MAIN))
         out["energy"] = 2 if by_name.get(ENERGY_FULL) else (
             0 if by_name.get(ENERGY_EMPTY) else 1)
         sel = by_name.get(CHAR_SELECT)

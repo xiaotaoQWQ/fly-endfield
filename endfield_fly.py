@@ -821,6 +821,8 @@ def main():
                                f"{f.get('combo_dia_corr', 0):+.3f}")
                   if dmark else "—"),
                 ("自动打死", f["n_reward"]),
+                 ("闪避信号", (f"{f.get('threat_max', 0):+.2f} 分 · "
+                               f"按下 {f.get('n_dodge', 0)} 次")),
                 ("自动挨打", f["n_punish"]),
                 ("打到(小额)", f["n_hit"]),
                 ("技能", f["n_skill"]),
@@ -1596,6 +1598,10 @@ def main():
                         #   用来区分「模型没认出祀的提示」和「认出了但分数不够」。
                         forager["onnx_combo_raw"] = float(
                             st_onnx.get("combo_raw") or 0.0)
+                        # ★ 闪避信号原始分（四个预警标签里的最高分）——
+                        #   和 combo_raw 一样，用来区分「没威胁」和「认不出」
+                        forager["threat_max"] = float(
+                            st_onnx.get("threat_max") or 0.0)
 
                 # ---- 闪避（Shift 点一下）----
                 # 威胁来源：ONNX 的三个预警标签（Charging / AccumulatingPower /
@@ -2440,6 +2446,9 @@ def main():
         f_combo_dia=(bool(forager.get('combo_dia')) if forager else False),
         f_combo_dia_corr=(round(float(forager.get('combo_dia_corr', 0)), 3)
                           if forager else 0.0),
+        f_threat=(round(float(forager.get('threat_max', 0)), 3)
+                  if forager else 0.0),
+        f_ndodge=(int(forager.get('n_dodge', 0)) if forager else 0),
         f_combo_seen=(int(forager.get('n_combo_seen', 0)) if forager else 0),
         f_combo_blocked=(int(forager.get('n_combo_blocked', 0)) if forager else 0),
         f_onnx_fps=(round(float(getattr(onnx_th, 'fps', 0) or 0), 1) if onnx_th else 0),

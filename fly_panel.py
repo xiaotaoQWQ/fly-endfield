@@ -479,6 +479,11 @@ class FlyPanel:
                 d.text((_x + 94, yy), (f"菱{_dia:.2f}" if _dia < 0.80 else "菱★"),
                        font=self.f_tiny,
                        fill=((120, 220, 160) if _dia >= 0.80 else (255, 200, 90)))
+            # ★ 闪避信号（四个预警标签里的最高分）—— 看「怪要打我了」到底认没认出来
+            _th = float(st.get("f_threat") or 0)
+            if _th > 0.10:
+                d.text((_x + 140, yy), f"闪{_th:.2f}", font=self.f_tiny,
+                       fill=((255, 170, 120) if _th >= 0.35 else (200, 160, 120)))
         else:
             d.text((_ox, yy), "ONNX 未启用（缺模型）",
                    font=self.f_tiny, fill=FAINT)

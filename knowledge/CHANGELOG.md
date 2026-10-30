@@ -14,6 +14,35 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-10-30 · 闪避信号补齐 MaaEnd 的 EnemyDodge + 暴露原始分
+
+**为什么**：核对 MaaEnd 源码时发现它的闪避判据是
+`GetEnemyAttackGroundDodge() || GetEnemyDodge()`，而我们只用了前者
+（外加两个它**不用**的 Charging / AccumulatingPower）。模型 metadata 里明明有
+`EnemyDodge`（第 14 类），漏掉它 = 少一条主力信号。
+另外和连携那边同一个道理：**没有原始分就分不清「没威胁」和「认不出」**。
+
+**改哪**：
+- `onnx_detect.py`：新增 `ENEMY_DODGE_MAIN="EnemyDodge"` 并进 `enemy_attack` 的 OR；
+  `threat_labels` 多一项；新增 `threat_max`（四个标签里的最高分，不管阈值）；
+  默认 state 补 `threat_labels={}`（无检测时原来会 KeyError）
+- `endfield_fly.py`：写 `forager["threat_max"]`；控制台面板加「闪避信号 xx 分 · 按下 N 次」；
+  状态 dict 加 `f_threat` / `f_ndodge`
+- `fly_panel.py`：右下角显示 `闪0.87`（≥0.35 亮橙）
+
+**怎么验**：
+```bash
+python -X utf8 endfield_fly.py --seconds 3 --dry --forage   # 应正常跑完 9 拍，退出码 0
+```
+离线抽帧（951 帧那份）：34 / 86 / 628 帧的 threat_max = 0.873 / 0.920 / 0.729 ✓
+
+**坑 / 数据**：720p 录制里四个预警标签**几乎不亮** —— 428 帧只有 1 帧、
+951 帧只有 9 帧，且 `EnemyDodge` 一次都没出现。这说明这个信号只能在
+**实机 2560×1440** 上评估（模型输入 640×640，720p 下预警图标太小），
+不能拿录制数据下「闪避没用」的结论。
+
+---
+
 ## 2026-10-30 · 顺手修：不带 --forage 时第一拍就崩（UnboundLocalError: _m）
 
 **为什么**：`_m = fod["mb"]` 只在 `fod is not None`（= 开了 --forage）的分支里赋值，
