@@ -2221,6 +2221,7 @@ def main():
                                       f"  (饥饿 {fod['hg'].h:.2f}, "
                                       f"分 {_csc:.2f} {_cbox}, "
                                       f"选中槽 {_sel}, 满的槽 {_cf}, "
+                                      f"{'提示' if _combo_edge else '兜底'}, "
                                       f"第 {fod['n_combo']} 次)")
                     # 指令列表一律英文（用户要求）
                     action_txt += ("  EAT-ATK" if f_atk else "  HUNGRY")
