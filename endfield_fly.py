@@ -461,6 +461,12 @@ def main():
                          "取 0.50 时每种分辨率的召回都是 97~99 个百分点，"
                          "而且「判定有提示」的帧占比在各分辨率下都是 12.3~12.8 "
                          "个百分点（真值 12.6）—— 说明没有额外误报")
+    # ★ 兜底节奏：模型认不出某个角色的提示时，靠「连携能量满了」定时按 E。
+    #   2026-10-30 加 —— 用户反馈祀的提示模型认不出来（combo_raw 恒 0）。
+    ap.add_argument("--combo-cool-full", type=float, default=0.8,
+                    help="有角色连携能量满时，每多少秒按一次 E（默认 0.8）。"
+                         "没提示时按 E 在终末地没有副作用，所以可以勤按；"
+                         "提示一出现就会被按到。设 0 = 关掉这个兜底")
     ap.add_argument("--combo-cool", type=float, default=0.0,
                     help="连携技最小间隔秒数（默认 0 = 有提示就按，无冷却）")
     ap.add_argument("--forage-decay", type=float, default=1e-4,
@@ -2143,7 +2149,22 @@ def main():
                                 fod["n_combo_seen"] = fod.get("n_combo_seen", 0) + 1
                                 if fod["hg"].h < args.combo_hunger:
                                     fod["n_combo_blocked"] = fod.get("n_combo_blocked", 0) + 1
-                            if (_combo_edge
+                            # ★★ 两条触发路（2026-10-30）
+                            #
+                            #   ① 模型认出提示（上升沿）→ 立刻按
+                            #   ② 模型认不出（如祀）→ 只要**有角色连携能量满**
+                            #      就每 --combo-cool-full 秒按一次 E 兜底
+                            #
+                            #   为什么 ② 安全：终末地里 E 就是连携技键，
+                            #   没提示时按 E 没有副作用；提示一出现就会被按到。
+                            _full_any = bool(
+                                st_onnx and st_onnx.get("ok")
+                                and any(st_onnx.get("combo_full") or []))
+                            _fire = _combo_edge or (
+                                _full_any
+                                and args.combo_cool_full > 0
+                                and ts - fod["last_combo"] >= args.combo_cool_full)
+                            if (_fire
                                     and fod["hg"].h >= args.combo_hunger
                                     and ts - fod["last_combo"] >= args.combo_cool):
                                 pressed_keys.append(str(args.combo_key).upper())
