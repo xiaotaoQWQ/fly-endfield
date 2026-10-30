@@ -2179,11 +2179,22 @@ def main():
                                           f"如果 combo_key 不是那个键，按了也没用。"
                                           f"面板最上面那行「键位」能看到当前值。",
                                           flush=True)
+                                # ★ 诊断（2026-10-30）：连携技到底该按谁？
+                                #   模型给了两个线索：
+                                #     CharacterSelect    → 当前选中第几号槽
+                                #     CharacterComboFull → 哪几个槽的连携是满的
+                                #   如果「选中」和「满」不一致，那按 E 可能放的是
+                                #   别人的连携 —— 这就是「祀的连携按不出来」的嫌疑。
+                                _sel = st_onnx.get("char_select") if st_onnx else None
+                                _cf = [i for i, v in
+                                       enumerate(st_onnx.get("combo_full") or [])
+                                       if v] if st_onnx else []
                                 print(f"  [{ts:6.1f}s] ★ 连携技 → 按 "
                                       f"{args.combo_key.upper()}"
-                                      f"  （饥饿 {fod['hg'].h:.2f}，"
-                                      f"分 {_csc:.2f} {_cbox}，"
-                                      f"第 {fod['n_combo']} 次）")
+                                      f"  (饥饿 {fod['hg'].h:.2f}, "
+                                      f"分 {_csc:.2f} {_cbox}, "
+                                      f"选中槽 {_sel}, 满的槽 {_cf}, "
+                                      f"第 {fod['n_combo']} 次)")
                     # 指令列表一律英文（用户要求）
                     action_txt += ("  EAT-ATK" if f_atk else "  HUNGRY")
 
