@@ -14,6 +14,23 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-10-30 · 顺手修：不带 --forage 时第一拍就崩（UnboundLocalError: _m）
+
+**为什么**：`_m = fod["mb"]` 只在 `fod is not None`（= 开了 --forage）的分支里赋值，
+但下面 `if args.ab_mushroom:` 是**降级到外层缩进**的，默认 ab_mushroom=True ——
+于是不带 `--forage` 跑，第一拍就 `UnboundLocalError: cannot access local variable _m`，
+整个程序退出。带了 --forage 的人永远看不到，所以一直没被发现。
+
+**改哪**：`endfield_fly.py` 主循环 → `if args.ab_mushroom and fod is not None:`
+
+**怎么验**：`python -X utf8 endfield_fly.py --seconds 3 --dry`（**不带** --forage）
+→ 以前第一拍就 traceback，现在能跑完 9 拍正常退出（退出码 0）。
+
+**坑**：这属于「对照组开关默认开 + 变量在别的分支里赋值」的组合 ——
+对照组这种东西默认关掉更安全，或者赋值提到分支外面。
+
+---
+
 ## 2026-10-30 · 连携提示改用 MaaEnd 的「菱形」模板 —— 解决祀不按连携
 
 **为什么**：ONNX 模型的 `CharacterComboActive` 认不出新角色「祀」（实机 combo_raw 恒 0，

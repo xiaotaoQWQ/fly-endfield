@@ -1882,7 +1882,7 @@ def main():
                     # 对照组：蘑菇体学习关掉 = 权重冻结（读取正常，但不再更新）。
                 # 和「多巴胺关掉」的区别：那个是信号本身没了，
                 # 这个是信号还在但不写进去—— 用来区分学不会和没得学。
-                if args.ab_mushroom:
+                if args.ab_mushroom and fod is not None:
                     _m.step(r, dt=1.0 / args.hz, reward_gain=fod["hg"].da_gain())
 
                 # ---- 群体解码：下行神经元 → 三条轴 → WASD + 鼠标 ----
