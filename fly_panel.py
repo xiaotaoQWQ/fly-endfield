@@ -47,6 +47,8 @@ COMBAT_H = 88
 # 觅食闭环条（《攻击奖励方案·第二版》）。同样**恒定预留**、关闭时透明 ——
 # Overlay.update() 尺寸不符会抛异常，动态高度会在切模式时崩掉。
 FORAGE_H = 84
+# ★ 玩家接管提示条：**永远预留**，所以面板高度恒定（Overlay 尺寸不能变）
+TAKEOVER_H = 52
 FG = (236, 242, 250)
 DIM = (136, 148, 168)
 FAINT = (74, 84, 102)
@@ -85,7 +87,8 @@ class FlyPanel:
         self.strips = tuple(strips)
         self.c_h = COMBAT_H if "combat" in self.strips else 0
         self.f_h = FORAGE_H if "forage" in self.strips else 0
-        self.extra_h = self.c_h + self.f_h
+        self.t_h = TAKEOVER_H          # 接管提示条：永远预留
+        self.extra_h = self.c_h + self.f_h + self.t_h
         self.pad = 12
         # 四列几何
         self.c1 = (12, 452)       # 标题 + 全脑
@@ -400,17 +403,18 @@ class FlyPanel:
         if forage_on and self.f_h:
             self._forage(d, self.h + self.c_h, st)
 
-        # ★★ 2026-11-01：玩家接管提示条（在**最下面加一条**，不挡任何可视化）
+        # ★★ 玩家接管条（2026-11-01）：在**最底下单独预留的 52px** 里画，
+        #    不压主面板任何内容；字号用 f_big(34)，一眼就能看见。
+        _ty = self.h + self.c_h + self.f_h
         if st.get("f_takeover"):
-            _bh = 26
-            _y0 = H - _bh          # 整幅图的最底部（不压主面板内容）
-            d.rectangle([0, _y0, W, H - 1], fill=(104, 34, 34, 240))
-            d.rectangle([0, _y0, W, _y0 + 1], fill=(255, 190, 120))
-            d.text((12, _y0 + 6), "玩家接管中...", font=self.f_lab,
-                   fill=(255, 228, 192))
-            d.text((W - 250, _y0 + 7),
-                   f"按 {st.get('f_takeover_key', '0')} 键交还控制",
-                   font=self.f_tiny, fill=(255, 206, 168))
+            d.rectangle([0, _ty, W, _ty + TAKEOVER_H - 1], fill=(126, 30, 30, 248))
+            d.rectangle([0, _ty, W, _ty + 3], fill=(255, 200, 130))
+            d.rectangle([0, _ty, 6, _ty + TAKEOVER_H - 1], fill=(255, 200, 130))
+            d.text((30, _ty + TAKEOVER_H // 2 + 1), "玩家接管中...",
+                   font=self.f_big, fill=(255, 244, 226), anchor="lm")
+            d.text((W - 30, _ty + TAKEOVER_H // 2 + 1),
+                   f"按 {st.get('f_takeover_key', 'HOME')} 键交还控制",
+                   font=self.f_val, fill=(255, 214, 176), anchor="rm")
 
         return np.asarray(img)
 

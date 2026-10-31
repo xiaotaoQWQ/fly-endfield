@@ -14,6 +14,25 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-11-01 · 接管提示条放大（34px）+ 单独预留 52px，不压任何可视化
+
+**为什么**：用户反馈提示条「字不明显」。原来只有 10~12px、挤在底部 26px 里。
+
+**改哪**（`fly_panel.py`）：
+- 新增常量 `TAKEOVER_H = 52`，在 `extra_h` 里**永远预留**一条（和战斗/觅食条同样的做法，
+  保证面板总高度恒定 —— Overlay 尺寸不能运行时变）
+- 提示条画在这 52px 里：暗红底 + 顶部/左侧 3px 亮边 + **34px 大字「玩家接管中...」**，
+  右侧 16px「按 HOME 键交还控制」
+- 不在接管状态时这条留空（全透明），不影响任何显示
+
+**怎么验**：
+```bash
+python -X utf8 -c "import sys;sys.path.insert(0,r'E:\终末地\fly-endfield');import fly_panel as f,numpy as np;from PIL import Image;Image.fromarray(f.FlyPanel().render(dict(r=np.zeros(211577,dtype=np.float32),f_takeover=True,f_takeover_key='HOME'))).save('panel.png')"
+```
+→ 底部一条 52px 高的红色横条，大字「玩家接管中...」（`_handoff/out/si_ref/panel_takeover.png`）
+
+---
+
 ## 2026-11-01 · 修：接管后角色还在攻击（普攻绕过了闸门，直接调 wclick）
 
 **为什么**：红条出来了、角色也不再被果蝇驱动着走，但**还在挥刀**。
