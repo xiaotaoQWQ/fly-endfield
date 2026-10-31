@@ -2892,6 +2892,8 @@ def main():
                             f_drift=(forager['mb'].drift if forager else 0.0),
                             f_mbon=(forager['mbon_val'] if forager else 0.0),
                             f_ch=(forager['ch'] if forager else ''),
+                            f_takeover=bool(takeover),
+                            f_takeover_key=str(args.takeover_key).upper(),
                             cm_mark=bool(m_on), cm_urge=cdec.urge,
                             cm_red_px=(cmark.red_px if cmark else 0),
                             spikes=spikes, spikes_total=spikes_total,
