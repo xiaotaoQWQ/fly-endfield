@@ -482,7 +482,9 @@ class FlyPanel:
             # ★ 闪避信号（四个预警标签里的最高分）—— 看「怪要打我了」到底认没认出来
             _th = float(st.get("f_threat") or 0)
             if _th > 0.10:
-                d.text((_x + 140, yy), f"闪{_th:.2f}", font=self.f_tiny,
+                d.text((_x + 140, yy), (f"闪{_th:.2f} 纵{int(st.get('f_ndodge_c') or 0)}"
+                                f"/O{int(st.get('f_ndodge_o') or 0)}"),
+                       font=self.f_tiny,
                        fill=((255, 170, 120) if _th >= 0.35 else (200, 160, 120)))
         else:
             d.text((_ox, yy), "ONNX 未启用（缺模型）",

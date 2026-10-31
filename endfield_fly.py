@@ -1642,6 +1642,8 @@ def main():
                         forager["last_dodge"] = ts
                         forager["n_dodge"] = forager.get("n_dodge", 0) + 1
                         forager["n_dodge_onnx"] = forager.get("n_dodge_onnx", 0) + 1
+                        forager["dodge_wait"] = ts
+                        forager["dodge_hp0"] = forager.get("auto_hp")
                         print(f"  [{ts:6.1f}s] ★ 闪避 → Shift 点一下  "
                               f"({st_onnx.get('threat_labels')}，"
                               f"第 {forager['n_dodge']} 次）")
@@ -1957,6 +1959,8 @@ def main():
                         forager["last_dodge"] = ts
                         forager["n_dodge"] = forager.get("n_dodge", 0) + 1
                         forager["n_dodge_cortex"] = forager.get("n_dodge_cortex", 0) + 1
+                        forager["dodge_wait"] = ts
+                        forager["dodge_hp0"] = forager.get("auto_hp")
                         forager["z_s_max"] = max(float(forager.get("z_s_max", -99.0)), _zs)
                         _zt = forager.setdefault("z_s_cnt", {})
                         for _th in (0.5, 1.0, 1.5, 2.0):
@@ -2450,6 +2454,26 @@ def main():
                                           hp_img=_hp, vig_left=_vl, vig_right=_vr)
                         fod["auto_hp"] = _o["hp"]
                         fod["auto_vig"] = _o["vig"]
+
+                        # ★ 闪避效果自检（2026-10-31）：按下 Shift 后 0.8 秒内掉没掉血
+                        #   —— 掉血 = 没躲掉；0.8 秒内没掉血 = 这一下至少没吃亏。
+                        #   没有这个就只能看到「按了几次」，看不到「躲没躲掉」。
+                        _dw = fod.get("dodge_wait")
+                        if _dw is not None:
+                            _hp0 = fod.get("dodge_hp0")
+                            _hp1 = fod.get("auto_hp")
+                            if (_hp0 is not None and _hp1 is not None
+                                    and _hp1 < _hp0 - 0.01):
+                                fod["n_dodge_fail"] = fod.get("n_dodge_fail", 0) + 1
+                                print(f"  [{ts:6.1f}s] NG 闪避**没躲掉**（掉血 "
+                                      f"{_hp0:.2f}→{_hp1:.2f}，累计 "
+                                      f"{fod.get('n_dodge_ok', 0)} 成 / {fod['n_dodge_fail']} 败）")
+                                fod["dodge_wait"] = None
+                            elif ts - _dw >= 0.8:
+                                fod["n_dodge_ok"] = fod.get("n_dodge_ok", 0) + 1
+                                print(f"  [{ts:6.1f}s] OK 闪避**没掉血**（0.8s 内，累计 "
+                                      f"{fod['n_dodge_ok']} 成 / {fod.get('n_dodge_fail', 0)} 败）")
+                                fod["dodge_wait"] = None
                         if _o["reward"] > 0:
                             _g = fod["hg"].da_gain()
                             if args.ab_dopamine:
@@ -2553,6 +2577,10 @@ def main():
         f_threat=(round(float(forager.get('threat_max', 0)), 3)
                   if forager else 0.0),
         f_ndodge=(int(forager.get('n_dodge', 0)) if forager else 0),
+        f_ndodge_c=(int(forager.get('n_dodge_cortex', 0)) if forager else 0),
+        f_ndodge_o=(int(forager.get('n_dodge_onnx', 0)) if forager else 0),
+        f_ndodge_ok=(int(forager.get('n_dodge_ok', 0)) if forager else 0),
+        f_ndodge_ng=(int(forager.get('n_dodge_fail', 0)) if forager else 0),
         f_combo_seen=(int(forager.get('n_combo_seen', 0)) if forager else 0),
         f_combo_blocked=(int(forager.get('n_combo_blocked', 0)) if forager else 0),
         f_onnx_fps=(round(float(getattr(onnx_th, 'fps', 0) or 0), 1) if onnx_th else 0),
@@ -2848,6 +2876,7 @@ def main():
                           f"（成 {forager.get('n_combo_ok', 0)}/败 {forager.get('n_combo_fail', 0)}）"
                           f"· 闪避 主视角{forager.get('n_dodge_cortex', 0)}次"
                           f"/ONNX{forager.get('n_dodge_onnx', 0)}次"
+                          f"· 成{forager.get('n_dodge_ok', 0)}/败{forager.get('n_dodge_fail', 0)}"
                           f"· looming z最大{float(forager.get('z_s_max', 0)):+.2f} {forager.get('z_s_cnt', {})} "
         f"（饥饿拦住 {forager.get('n_combo_blocked', 0)}）· "
         f"{forager['mb'].drift:.1f} · 奖赏 {forager['n_reward']} "
