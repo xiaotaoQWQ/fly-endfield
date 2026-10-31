@@ -2025,6 +2025,9 @@ def main():
                           f" · 过阈拍次 ≥0.5 {_zcnt.get('0.5', 0)}/{_zn}"
                           f" ≥0.8 {_zcnt.get('0.8', 0)} ≥1.0 {_zcnt.get('1.0', 0)}")
 
+                yield_dir = (combat_on and args.combat_yield == "attack"
+                             and (cm["attack"] or cm["skill"]))
+
                 # 放电统计：速率模型没有离散脉冲，所以用「显著高于整体的神经元数」当代理量。
                 # 阈值取 μ+2σ（标准离群口径）。
                 # ★ 一开始用的是 2.5×均值 —— 但 r 的分布很集中时 max < 2.5×mean，

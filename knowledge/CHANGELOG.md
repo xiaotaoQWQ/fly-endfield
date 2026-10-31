@@ -14,6 +14,31 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-10-31 · 修：`test_combat.cmd` 一闪就退（NameError: yield_dir）
+
+**为什么**：加「每 10 秒 looming 日志」时，多行 splice 多吃了几行，把
+`yield_dir = (combat_on and args.combat_yield == "attack" and (cm["attack"] or cm["skill"]))`
+整行删掉了 → 启动后第 3 拍走到 `if yield_dir:` 就 `NameError`，
+cmd 窗口一闪就退（日志末尾能看到 traceback）。
+
+**改哪**：`endfield_fly.py` 把 `yield_dir` 那两行补回去（放在 10 秒日志之后）。
+
+**怎么验**：**必须用 test_combat.cmd 的完整参数**跑 dry，不能只挑几个：
+```bash
+python -X utf8 endfield_fly.py --hz 2.5 --motor pop --eye main --eye-hz 30 \
+  --forage --evac --auto-outcome --combo --skill-auto --ult \
+  --combo-hunger 0.0 --dodge-cool 1.2 --attack-hold 1.0 \
+  --onnx-hz 6 --onnx-conf 0.22 --seconds 3 --stuck-sec 3.0 --escape-grace 10 --dry
+```
+→ 退出码 0（修之前：第 3 拍 NameError）。
+
+**坑**：这就是「自检通过但根本没测到」的老毛病（06 篇 F1）。
+我 dry 跑的是 `--seconds 3 --dry --forage --combo`，**少了 `--motor pop`** ——
+`yield_dir` 所在的分支压根没走到，所以自检绿灯、实机必崩。
+**以后自检必须用 `.cmd` 里的原参数，一条不能少。**
+
+---
+
 ## 2026-10-31 · 闪避更灵敏：z 阈值 1.5→1.0 + 新增「中心闪红」第二判据
 
 **为什么**：用户反馈「很多能闪的攻击它不闪，不知道是识别还是不知道该闪」。
