@@ -303,6 +303,10 @@ def main():
     ap.add_argument("--dodge-flash-red", type=float, default=40.0,
                     help="中心区 R−G 超过多少算「攻击闪光」（默认 40）。实测：中位 -2.2 / "
                          "p90 17.5 / p99 49.3，取 40 约 1 个百分点的帧")
+    ap.add_argument("--dodge-key", default="shift",
+                    help="闪避键（默认 shift）。★ 如果实机看不到角色闪避，先用它试 space")
+    ap.add_argument("--dodge-tap", type=float, default=0.12,
+                    help="闪避键按压时长（秒，默认 0.12）。原来是 0.05 —— 太短，游戏可能只当成松开了冲刺")
     ap.add_argument("--attack-hold", type=float, default=1.0,
                     help="★ 普攻按住多少秒（默认 1.0）。改长按后时长超过决策拍"
                          "（400ms），所以按下/抬起落在**不同的拍**上 —— "
@@ -1168,8 +1172,10 @@ def main():
                   按压 ~50ms 远短于决策拍 400ms，一次按压在同一拍内开始并结束。
                 """
                 self._sync("sprint", False)
-                ic.key_up("shift", kb)
-                ic.tap("shift", 0.05, kb)
+                ic.key_up("shift", kb)              # 冲刺状态（Shift）先松掉
+                # ★ 2026-10-31：50 ms 的 tap 太短 —— 技能键用 0.10 才稳定生效，
+                #   闪避沿用 50 ms 时游戏可能只当成"松开了冲刺"，角色根本没闪。
+                ic.tap(str(args.dodge_key), float(args.dodge_tap), kb)
 
             def combat_press(self, key: str):
                 """战斗键：做一次**阻塞式**点击。

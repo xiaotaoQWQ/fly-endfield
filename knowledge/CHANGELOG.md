@@ -14,6 +14,36 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-10-31 · 闪避键按压 50ms → 120ms（很可能「按了但角色没闪」的根因）
+
+**为什么**：用户说「好像没按过闪避」，但那一轮 120 秒日志里**闪了 16 次**
+（主视角 looming 7 + 中心闪红 6 + ONNX 3），说明**触发是好的**。
+那「看不到角色闪避」就只剩一种解释：**Shit 的按压被游戏忽略了**。
+证据：技能键用 `ic.tap(key, 0.10)` 稳定生效；而 `dodge()` 用的是 **0.05 秒**。
+50 ms 在「先松开冲刺（Shift）」之后可能被当成一次抖动，游戏不认。
+
+**改哪**（`endfield_fly.py`）：
+- `dodge()` 改成 `ic.tap(args.dodge_key, args.dodge_tap)`，默认 **0.12 秒**
+- 新增 `--dodge-key`（默认 `shift`）：**如果 120ms 还是看不到闪避，可以试 `space`**
+- 新增 `--dodge-tap`（默认 0.12）
+
+**怎么验**：
+```bash
+python -X utf8 endfield_fly.py --hz 2.5 --motor pop --eye main --eye-hz 30 \
+  --forage --evac --auto-outcome --combo --skill-auto --ult --combo-hunger 0.0 \
+  --dodge-cool 1.2 --attack-hold 1.0 --onnx-hz 6 --onnx-conf 0.22 \
+  --seconds 3 --stuck-sec 3.0 --escape-grace 10 --dry
+```
+→ 退出码 0。
+实机：日志里 `★ 闪避 …` 之后，**眼睛看着角色**有没有翻滚/位移。
+还是没有 → 用 `--dodge-key space` 再跑（有的版本闪避是空格）。
+
+**坑**：`OK 闪避没掉血` 这个自检**太弱** —— 0.8 秒内本来大多数时候也不掉血，
+所以它会给一堆假的 OK。判断「闪避到底生不生效」现在只能靠**眼睛看**，
+下一步应该找「体力条掉没掉」或「位移突变」这类硬信号。
+
+---
+
 ## 2026-10-31 · 修：`test_combat.cmd` 一闪就退（NameError: yield_dir）
 
 **为什么**：加「每 10 秒 looming 日志」时，多行 splice 多吃了几行，把
