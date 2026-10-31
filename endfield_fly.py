@@ -1658,6 +1658,7 @@ def main():
                         forager["n_dodge_onnx"] = forager.get("n_dodge_onnx", 0) + 1
                         forager["dodge_wait"] = ts
                         forager["dodge_hp0"] = forager.get("auto_hp")
+                        forager["dodge_odo0"] = (float(odo.x), float(odo.y))
                         print(f"  [{ts:6.1f}s] ★ 闪避 → Shift 点一下  "
                               f"({st_onnx.get('threat_labels')}，"
                               f"第 {forager['n_dodge']} 次）")
@@ -1982,6 +1983,7 @@ def main():
                         forager["n_dodge_cortex"] = forager.get("n_dodge_cortex", 0) + 1
                         forager["dodge_wait"] = ts
                         forager["dodge_hp0"] = forager.get("auto_hp")
+                        forager["dodge_odo0"] = (float(odo.x), float(odo.y))
                         print(f"  [{ts:6.1f}s] ★ 闪避 ← 主视角 looming z={_zs:+.2f}  "
                               f"第 {forager['n_dodge']} 次")
                     forager["dodge_z_armed"] = _z_now
@@ -2015,6 +2017,7 @@ def main():
                             forager["n_dodge_flash"] = forager.get("n_dodge_flash", 0) + 1
                             forager["dodge_wait"] = ts
                             forager["dodge_hp0"] = forager.get("auto_hp")
+                            forager["dodge_odo0"] = (float(odo.x), float(odo.y))
                             print(f"  [{ts:6.1f}s] ★ 闪避 ← 主视角 中心闪红 R−G={_rg:+.0f}  "
                                   f"第 {forager['n_dodge']} 次")
                         forager["flash_armed"] = _f_now
@@ -2508,24 +2511,27 @@ def main():
                         fod["auto_hp"] = _o["hp"]
                         fod["auto_vig"] = _o["vig"]
 
-                        # ★ 闪避效果自检（2026-10-31）：按下 Shift 后 0.8 秒内掉没掉血
-                        #   —— 掉血 = 没躲掉；0.8 秒内没掉血 = 这一下至少没吃亏。
-                        #   没有这个就只能看到「按了几次」，看不到「躲没躲掉」。
+                        # ★ 闪避效果自检（2026-10-31）
+                        #   ① **位移**是硬信号：闪避会瞬间移动几个地图像素（骗不了人）
+                        #   ② 0.8 秒内掉血 = 没躲掉
                         _dw = fod.get("dodge_wait")
                         if _dw is not None:
                             _hp0 = fod.get("dodge_hp0")
                             _hp1 = fod.get("auto_hp")
-                            if (_hp0 is not None and _hp1 is not None
-                                    and _hp1 < _hp0 - 0.01):
+                            _o0 = fod.get("dodge_odo0")
+                            _disp = (round(float(((odo.x - _o0[0]) ** 2
+                                  + (odo.y - _o0[1]) ** 2) ** 0.5), 1) if _o0 else -1.0)
+                            _hit = (_hp0 is not None and _hp1 is not None and _hp1 < _hp0 - 0.01)
+                            if _hit:
                                 fod["n_dodge_fail"] = fod.get("n_dodge_fail", 0) + 1
-                                print(f"  [{ts:6.1f}s] NG 闪避**没躲掉**（掉血 "
-                                      f"{_hp0:.2f}→{_hp1:.2f}，累计 "
-                                      f"{fod.get('n_dodge_ok', 0)} 成 / {fod['n_dodge_fail']} 败）")
+                                print(f"  [{ts:6.1f}s] NG 闪避**没躲掉**（掉血 {_hp0:.2f}→{_hp1:.2f}，"
+                                      f"位移 {_disp} px，累计 {fod.get('n_dodge_ok', 0)} 成 / "
+                                      f"{fod['n_dodge_fail']} 败）")
                                 fod["dodge_wait"] = None
                             elif ts - _dw >= 0.8:
                                 fod["n_dodge_ok"] = fod.get("n_dodge_ok", 0) + 1
-                                print(f"  [{ts:6.1f}s] OK 闪避**没掉血**（0.8s 内，累计 "
-                                      f"{fod['n_dodge_ok']} 成 / {fod.get('n_dodge_fail', 0)} 败）")
+                                print(f"  [{ts:6.1f}s] OK 闪避（0.8s 没掉血，位移 {_disp} px，"
+                                      f"累计 {fod['n_dodge_ok']} 成 / {fod.get('n_dodge_fail', 0)} 败）")
                                 fod["dodge_wait"] = None
                         if _o["reward"] > 0:
                             _g = fod["hg"].da_gain()
