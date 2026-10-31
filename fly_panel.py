@@ -105,6 +105,7 @@ class FlyPanel:
         self.f_lab = _pick(FONT_CN, 12)
         self.f_val = _pick(FONT_CN, 16)
         self.f_big = _pick(FONT_CN, 34)
+        self.f_huge = _pick(FONT_CN, 96)   # 接管时的超大标题
         self.f_key = _pick(FONT_CN, 12)
         self.f_mono = _pick(FONT_MONO, 12)
         self.f_log = _pick(FONT_CN, 12)
@@ -410,11 +411,25 @@ class FlyPanel:
             d.rectangle([0, _ty, W, _ty + TAKEOVER_H - 1], fill=(126, 30, 30, 248))
             d.rectangle([0, _ty, W, _ty + 3], fill=(255, 200, 130))
             d.rectangle([0, _ty, 6, _ty + TAKEOVER_H - 1], fill=(255, 200, 130))
-            d.text((30, _ty + TAKEOVER_H // 2 + 1), "玩家接管中...",
-                   font=self.f_big, fill=(255, 244, 226), anchor="lm")
+            d.text((30, _ty + TAKEOVER_H // 2 + 1), "● 玩家接管中",
+                   font=self.f_val, fill=(255, 244, 226), anchor="lm")
             d.text((W - 30, _ty + TAKEOVER_H // 2 + 1),
                    f"按 {st.get('f_takeover_key', 'HOME')} 键交还控制",
                    font=self.f_val, fill=(255, 214, 176), anchor="rm")
+
+        # ★★ 接管时的**超大遮罩**（2026-11-01 用户要求：再大一些、盖在可视化上）
+        #    用单独的 RGBA 图层 + alpha_composite 做**真半透明**，
+        #    这样神经活动/按键那些内容还看得见（直接 d.rectangle 会把像素盖掉）。
+        if st.get("f_takeover"):
+            _lay = Image.new("RGBA", (W, self.h), (0, 0, 0, 0))
+            _ld = ImageDraw.Draw(_lay)
+            _ld.rectangle([0, 0, W, self.h - 1], fill=(118, 16, 16, 118))
+            _ld.text((W // 2, int(self.h * 0.42)), "玩家接管中",
+                     font=self.f_huge, fill=(255, 244, 232, 235), anchor="mm")
+            _ld.text((W // 2, int(self.h * 0.42) + 86),
+                     f"按 {st.get('f_takeover_key', 'HOME')} 键交还控制",
+                     font=self.f_big, fill=(255, 206, 160, 230), anchor="mm")
+            img.alpha_composite(_lay, (0, 0))
 
         return np.asarray(img)
 
