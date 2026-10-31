@@ -54,6 +54,8 @@ def main() -> int:
         ("4) 单按 Alt", "alt", None),
         ("5) 单按 Ctrl", "ctrl", None),
         ("6) 单按鼠标右键", "mouse_right", None),
+        ("7) ★ fly 原始动作：先松 Shift 再 tap 0.12（复刻 dodge()）", "seq_dodge", None),
+        ("8) ★ 冲刺中：按住 Shift 1 秒 → 松 → tap 0.12", "seq_sprint_dodge", None),
     ]
 
     for name, key, hold in trials:
@@ -63,6 +65,29 @@ def main() -> int:
             print("   [DRY] 跳过", flush=True)
             continue
         try:
+            if key == "seq_dodge":
+                # 完全复刻 endfield_fly 里的 ex.dodge()
+                r1 = ic.key_up("shift")
+                time.sleep(0.02)
+                r2 = ic.key_down("shift")
+                time.sleep(0.12)
+                r3 = ic.key_up("shift")
+                print(f"   已发送 松→按→松 shift（send {r1}/{r2}/{r3}）", flush=True)
+                time.sleep(a.gap)
+                continue
+            if key == "seq_sprint_dodge":
+                # 先按住 Shift 1 秒（= 冲刺中），再松→tap，复刻真实工况
+                ic.key_down("shift")
+                time.sleep(1.0)
+                print("   已按住 shift 1 秒（模拟冲刺）", flush=True)
+                r1 = ic.key_up("shift")
+                time.sleep(0.02)
+                r2 = ic.key_down("shift")
+                time.sleep(0.12)
+                r3 = ic.key_up("shift")
+                print(f"   松→按→松 shift（send {r1}/{r2}/{r3}）", flush=True)
+                time.sleep(a.gap)
+                continue
             if hold:
                 ic.key_down(hold)
                 time.sleep(0.15)
