@@ -400,6 +400,18 @@ class FlyPanel:
         if forage_on and self.f_h:
             self._forage(d, self.h + self.c_h, st)
 
+        # ★★ 2026-11-01：玩家接管提示条（在**最下面加一条**，不挡任何可视化）
+        if st.get("f_takeover"):
+            _bh = 26
+            _y0 = H - _bh          # 整幅图的最底部（不压主面板内容）
+            d.rectangle([0, _y0, W, H - 1], fill=(104, 34, 34, 240))
+            d.rectangle([0, _y0, W, _y0 + 1], fill=(255, 190, 120))
+            d.text((12, _y0 + 6), "玩家接管中...", font=self.f_lab,
+                   fill=(255, 228, 192))
+            d.text((W - 250, _y0 + 7),
+                   f"按 {st.get('f_takeover_key', '0')} 键交还控制",
+                   font=self.f_tiny, fill=(255, 206, 168))
+
         return np.asarray(img)
 
     # ------------------------------------------------------------------

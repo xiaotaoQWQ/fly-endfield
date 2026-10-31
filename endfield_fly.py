@@ -186,8 +186,13 @@ def main():
     # ---- 战斗模式（交接文档 §二/§三/§五/§六/§八）----
     ap.add_argument("--combat", action="store_true",
                     help="启动时就打开战斗模式（默认关，运行时按 0 切换）")
-    ap.add_argument("--combat-key", default="0", choices=["0", "9", "-", "="],
-                    help="战斗模式开关（默认 0 键，按下沿切换）")
+    ap.add_argument("--combat-key", default="9", choices=["0", "9", "-", "="],
+                    help="战斗模式开关（默认 9 键，按下沿切换）。★ 0 键让给「玩家接管」了")
+    # ★★ 2026-11-01：玩家接管。人想自己打的时候按一下就把控制权拿回来，
+    #    果蝇**照常算、照常显示**，只是**一个键都不发**。再按一下交还。
+    ap.add_argument("--takeover-key", default="0", choices=["0", "9", "-", "="],
+                    help="玩家接管开关（默认 0 键，按下沿切换）。"
+                         "接管时果蝇停手、可视化照常，面板底部显示「玩家接管中...」")
     ap.add_argument("--attack-key", default="mouse_left",
                     help="攻击键：mouse_left / mouse_right / 或键盘键名（默认鼠标左键）")
     ap.add_argument("--skill-key", default="1",
@@ -1230,6 +1235,31 @@ def main():
 
         ex = EFExec()
 
+        # ★★ 玩家接管闸门（2026-11-01）：一个开关把所有「发送」类调用堵死，
+        #    但 release_* 照常放行 —— 接管那一刻必须先把 W/Shift 松开，
+        #    不然角色会一直往前走。漏路径的教训见 06 篇（闸门要一次堵死所有出口）。
+        class _TakeoverGate:
+            # 可开关的空操作：on=True 时一个键都不发
+            SEND = ("apply", "press", "hold", "click", "combat_", "dodge")
+
+            def __init__(self, inner):
+                self._inner = inner
+                self.on = False
+                self.blocked = 0
+
+            def __getattr__(self, name):
+                inner = self._inner
+                if name.startswith(self.SEND):
+                    def _gated(*a, **k):
+                        if self.on:
+                            self.blocked += 1
+                            return None
+                        return getattr(inner, name)(*a, **k)
+                    return _gated
+                return getattr(inner, name)
+
+        ex = _TakeoverGate(ex)
+
     # ---- 对照组：运动输出关掉 = 一个键都不按 ----
     # ★ 用**包装**而不是在每个调用点加判断：调用点有 10 来个，
     #   漏一个就白测了（前面战斗不许跳那个 bug 就是漏了三条路径之一）。
@@ -1311,12 +1341,18 @@ def main():
     COMBAT_VK = {"0": 0x30, "9": 0x39, "-": 0xBD, "=": 0xBB}
     combat_vk = COMBAT_VK.get(args.combat_key, 0x30)
     combat_key_down = False
+    # ★ 玩家接管（0 键）—— 和战斗模式是两个独立开关
+    takeover_vk = COMBAT_VK.get(args.takeover_key, 0x30)
+    takeover_key_down = False
+    takeover = False
     # ★ 普攻长按状态（跨拍：按下记时刻，到点再松）
     atk_holding = False
     atk_hold_until = 0.0
     print(f"战斗模式：{'开' if combat_on else '关'}"
           f"（按 {args.combat_key} 切换）· 攻击键 {args.attack_key}"
           f" · 技能键 {args.skill_key} · 方向{'让位' if args.combat_yield == 'attack' else '不让位'}")
+    print(f"玩家接管：按 {args.takeover_key} 切换"
+          f"（接管时果蝇一个键都不发，画面/面板照常）")
 
     # ★ 连携菱形的防抖窗口（--combo-vote；1 = 不防抖）
     _dhist = deque(maxlen=max(1, int(args.combo_vote)))
@@ -1939,6 +1975,25 @@ def main():
                     tz = pm["turn_z"]
                     direction = "右" if tz > 0.8 else ("左" if tz < -0.8 else "未定")
                     turn = 1 if direction == "右" else (-1 if direction == "左" else 0)
+
+                # ---- 玩家接管：0 键切换（按下沿，不是电平）----
+                #   ★ 进入接管：先 release_all()（否则 W/Shift 会卡着不放，角色一直走），
+                #     再把闸门关上；出去时只开门，held 已清空，下一拍会自动重新按下。
+                _td = bool(user32.GetAsyncKeyState(takeover_vk) & 0x8000)
+                if _td and not takeover_key_down:
+                    takeover = not takeover
+                    if takeover:
+                        if ex is not None and hasattr(ex, "release_all"):
+                            ex.release_all()
+                        if ex is not None and hasattr(ex, "on"):
+                            ex.on = True
+                        print(f"  [{ts:6.1f}s] ★★ 玩家接管 → 果蝇停手（按 "
+                              f"{args.takeover_key} 交还）", flush=True)
+                    else:
+                        if ex is not None and hasattr(ex, "on"):
+                            ex.on = False
+                        print(f"  [{ts:6.1f}s] ★★ 接管结束 → 果蝇接手", flush=True)
+                takeover_key_down = _td
 
                 # ---- 战斗模式：0 键切换（按下沿，不是电平）----
                 _cd = bool(user32.GetAsyncKeyState(combat_vk) & 0x8000)
@@ -2633,6 +2688,8 @@ def main():
         f_combo_dia=(bool(forager.get('combo_dia')) if forager else False),
         f_combo_dia_corr=(round(float(forager.get('combo_dia_corr', 0)), 3)
                           if forager else 0.0),
+        f_takeover=bool(takeover),
+        f_takeover_key=str(args.takeover_key),
         f_threat=(round(float(forager.get('threat_max', 0)), 3)
                   if forager else 0.0),
         f_ndodge=(int(forager.get('n_dodge', 0)) if forager else 0),

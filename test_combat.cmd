@@ -22,6 +22,9 @@ REM       gets covered)
 REM    - live status page:  http://127.0.0.1:9120
 REM    - 300 seconds
 REM
+REM  Keys: 0 = player takeover (fly stops pressing, panel stays),
+REM        9 = combat mode toggle
+REM
 REM  Log: out\combat_test.log
 REM ============================================================
 
