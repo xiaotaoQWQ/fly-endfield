@@ -463,10 +463,12 @@ def main():
                          "个百分点（真值 12.6）—— 说明没有额外误报")
     # ★ 兜底节奏：模型认不出某个角色的提示时，靠「连携能量满了」定时按 E。
     #   2026-10-30 加 —— 用户反馈祀的提示模型认不出来（combo_raw 恒 0）。
-    ap.add_argument("--combo-cool-full", type=float, default=0.8,
-                    help="有角色连携能量满时，每多少秒按一次 E（默认 0.8）。"
-                         "没提示时按 E 在终末地没有副作用，所以可以勤按；"
-                         "提示一出现就会被按到。设 0 = 关掉这个兜底")
+    ap.add_argument("--combo-cool-full", type=float, default=0.0,
+                    help="【默认关】有角色连携能量满时，每多少秒按一次 E 兜底。"
+                         "★ 2026-10-31 默认从 0.8 改成 0：槽几乎一直是满的，"
+                         "电平触发就变成每 0.9 秒按一次 E —— 实机 60 秒按了 51 次，"
+                         "用户反馈就是「E 在乱按」。连携提示现在有菱形模板兜住，"
+                         "这一路不需要了。真要开就设 >0，只认「满的槽变多」的上升沿")
     ap.add_argument("--combo-cool", type=float, default=0.0,
                     help="连携技最小间隔秒数（默认 0 = 有提示就按，无冷却）")
     # ============ 连携菱形（MaaEnd 的 Combo.png）============
@@ -2246,9 +2248,14 @@ def main():
                             #
                             #   为什么 ② 安全：终末地里 E 就是连携技键，
                             #   没提示时按 E 没有副作用；提示一出现就会被按到。
-                            _full_any = bool(
-                                st_onnx and st_onnx.get("ok")
-                                and any(st_onnx.get("combo_full") or []))
+                            _full_n = (int(sum(st_onnx.get("combo_full") or []))
+                                       if (st_onnx and st_onnx.get("ok")) else 0)
+                            # ★ 只认「满的槽变多」的上升沿，不认电平：
+                            #   实测槽一直是满的（[0,1,2,3] 持续几十秒），电平触发 =
+                            #   每 0.8 秒按一次 E（60 秒按 51 次），看着就是"乱按"。
+                            _full_prev = int(fod.get("combo_full_n", 0))
+                            fod["combo_full_n"] = _full_n
+                            _full_any = _full_n > _full_prev
                             _fire = _combo_edge or (
                                 _full_any
                                 and args.combo_cool_full > 0
@@ -2260,6 +2267,8 @@ def main():
                                 ex.combat_press(args.combo_key)
                                 fod["last_combo"] = ts
                                 fod["n_combo"] += 1
+                                if _combo_edge:
+                                    fod["combo_wait"] = ts
                                 # ★ 把 ONNX 分数写进日志 ——
                                 #   用来区分「真提示」和「flicker」：
                                 #     真提示：分数稳在 0.8~0.9
@@ -2282,11 +2291,14 @@ def main():
                                 #   但没人看得出问题在哪。
                                 #   做法：连续按满 4 次且间隔都很短时，警告一次。
                                 _cnow = fod.setdefault("combo_streak", {"n": 0, "t": 0.0})
-                                if ts - _cnow["t"] < 2.0:
-                                    _cnow["n"] += 1
+                                if _combo_edge:
+                                    if ts - _cnow["t"] < 2.0:
+                                        _cnow["n"] += 1
+                                    else:
+                                        _cnow["n"] = 1
+                                    _cnow["t"] = ts
                                 else:
-                                    _cnow["n"] = 1
-                                _cnow["t"] = ts
+                                    _cnow["n"] = 0   # 兜底不算"提示按不掉"
                                 if _cnow["n"] == 4:
                                     print(f"  ⚠ 连携技连按 4 次（键 "
                                           f"「{args.combo_key}」）提示仍不消失 —— "
@@ -2308,10 +2320,25 @@ def main():
                                 print(f"  [{ts:6.1f}s] ★ 连携技 → 按 "
                                       f"{args.combo_key.upper()}"
                                       f"  (饥饿 {fod['hg'].h:.2f}, "
-                                      f"分 {_csc:.2f} {_cbox}, "
+                                      f"分 {_csc:.2f}{_cbox}, 菱 {_dia_corr:.2f}, "
                                       f"选中槽 {_sel}, 满的槽 {_cf}, "
                                       f"{('提示·' + _combo_src) if _combo_edge else '兜底'}, "
                                       f"第 {fod['n_combo']} 次)")
+
+                            # ★ 效果自检（2026-10-31）：按完 E 之后看**提示有没有消失**。
+                            #   消失 = 这一下真生效；1.2 秒还在 = 没生效
+                            #   （键没送到游戏 / 按错键 / 提示是别人的）。
+                            #   有这个才能回答"到底按对没有"，而不是只看按了几下。
+                            _cw = fod.get("combo_wait")
+                            if _cw is not None:
+                                if not m_combo:
+                                    fod["n_combo_ok"] = fod.get("n_combo_ok", 0) + 1
+                                    print(f"  [{ts:6.1f}s] OK 连携生效（提示消失 {ts - _cw:.1f}s，累计 {fod['n_combo_ok']} 成 / {fod.get('n_combo_fail', 0)} 败）")
+                                    fod["combo_wait"] = None
+                                elif ts - _cw >= 1.2:
+                                    fod["n_combo_fail"] = fod.get("n_combo_fail", 0) + 1
+                                    print(f"  [{ts:6.1f}s] NG 连携**没生效**（1.2s 后提示还在，累计 {fod.get('n_combo_ok', 0)} 成 / {fod['n_combo_fail']} 败）")
+                                    fod["combo_wait"] = None
                     # 指令列表一律英文（用户要求）
                     action_txt += ("  EAT-ATK" if f_atk else "  HUNGRY")
 
@@ -2741,6 +2768,7 @@ def main():
                                                        punish=forager["n_punish"]))
                     print(f"  补丁已存：{_n:,} 条边 · 漂移 "
                           f"连携 看到{forager.get('n_combo_seen', 0)}次/按{forager['n_combo']}次"
+                          f"（成 {forager.get('n_combo_ok', 0)}/败 {forager.get('n_combo_fail', 0)}）"
         f"（饥饿拦住 {forager.get('n_combo_blocked', 0)}）· "
         f"{forager['mb'].drift:.1f} · 奖赏 {forager['n_reward']} "
                           f"惩罚 {forager['n_punish']} → {args.forage_patch}")
