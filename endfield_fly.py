@@ -186,12 +186,14 @@ def main():
     # ---- 战斗模式（交接文档 §二/§三/§五/§六/§八）----
     ap.add_argument("--combat", action="store_true",
                     help="启动时就打开战斗模式（默认关，运行时按 0 切换）")
-    ap.add_argument("--combat-key", default="9", choices=["0", "9", "-", "="],
+    ap.add_argument("--combat-key", default="9",
+                    choices=["0", "9", "-", "=", "home", "f12"],
                     help="战斗模式开关（默认 9 键，按下沿切换）。★ 0 键让给「玩家接管」了")
     # ★★ 2026-11-01：玩家接管。人想自己打的时候按一下就把控制权拿回来，
     #    果蝇**照常算、照常显示**，只是**一个键都不发**。再按一下交还。
-    ap.add_argument("--takeover-key", default="0", choices=["0", "9", "-", "="],
-                    help="玩家接管开关（默认 0 键，按下沿切换）。"
+    ap.add_argument("--takeover-key", default="home",
+                    choices=["0", "9", "-", "=", "home", "f12"],
+                    help="玩家接管开关（默认 Home 键，按下沿切换）。"
                          "接管时果蝇停手、可视化照常，面板底部显示「玩家接管中...」")
     ap.add_argument("--attack-key", default="mouse_left",
                     help="攻击键：mouse_left / mouse_right / 或键盘键名（默认鼠标左键）")
@@ -1338,7 +1340,8 @@ def main():
         print("暂停键：关闭")
 
     # ---- 战斗模式开关 ----
-    COMBAT_VK = {"0": 0x30, "9": 0x39, "-": 0xBD, "=": 0xBB}
+    COMBAT_VK = {"0": 0x30, "9": 0x39, "-": 0xBD, "=": 0xBB,
+             "home": 0x24, "f12": 0x7B}
     combat_vk = COMBAT_VK.get(args.combat_key, 0x30)
     combat_key_down = False
     # ★ 玩家接管（0 键）—— 和战斗模式是两个独立开关
@@ -1351,7 +1354,7 @@ def main():
     print(f"战斗模式：{'开' if combat_on else '关'}"
           f"（按 {args.combat_key} 切换）· 攻击键 {args.attack_key}"
           f" · 技能键 {args.skill_key} · 方向{'让位' if args.combat_yield == 'attack' else '不让位'}")
-    print(f"玩家接管：按 {args.takeover_key} 切换"
+    print(f"玩家接管：按 {str(args.takeover_key).upper()} 切换"
           f"（接管时果蝇一个键都不发，画面/面板照常）")
 
     # ★ 连携菱形的防抖窗口（--combo-vote；1 = 不防抖）
@@ -1576,7 +1579,7 @@ def main():
                 #   再点「启动」是**接着这一轮继续跑**，不是从头开新的一轮
                 #   （t0 / 轨迹 / 计数 / 饥饿值全都保留）。
                 #   想真正结束一轮、从头再来：点面板上的「停止」。
-                if stop_vk and (user32.GetAsyncKeyState(stop_vk) & 0x8000):
+                if stop_vk and (user32.GetAsyncKeyState(stop_vk) & 0x8001):
                     if not _pause_logged[0]:
                         print(f"\n  ⏸ 检测到 {args.stop_key.upper()} 键 → 暂停"
                               f"（再按一次没反应，点「启动」继续）")
@@ -1979,7 +1982,10 @@ def main():
                 # ---- 玩家接管：0 键切换（按下沿，不是电平）----
                 #   ★ 进入接管：先 release_all()（否则 W/Shift 会卡着不放，角色一直走），
                 #     再把闸门关上；出去时只开门，held 已清空，下一拍会自动重新按下。
-                _td = bool(user32.GetAsyncKeyState(takeover_vk) & 0x8000)
+                                # ★ 用 0x0001（按下沿锁存位）而不是 0x8000（当前是否按住）：
+                #   主循环 2.5 Hz，一次 100ms 的短按在 0x8000 下大概率被整拍错过 ——
+                #   实测「按 0 没反应」就是这个。0x0001 会把这一下**锁存**下来。
+                _td = bool(user32.GetAsyncKeyState(takeover_vk) & 0x0001)
                 if _td and not takeover_key_down:
                     takeover = not takeover
                     if takeover:
@@ -1988,7 +1994,7 @@ def main():
                         if ex is not None and hasattr(ex, "on"):
                             ex.on = True
                         print(f"  [{ts:6.1f}s] ★★ 玩家接管 → 果蝇停手（按 "
-                              f"{args.takeover_key} 交还）", flush=True)
+                              f"{str(args.takeover_key).upper()} 交还）", flush=True)
                     else:
                         if ex is not None and hasattr(ex, "on"):
                             ex.on = False
@@ -1996,7 +2002,7 @@ def main():
                 takeover_key_down = _td
 
                 # ---- 战斗模式：0 键切换（按下沿，不是电平）----
-                _cd = bool(user32.GetAsyncKeyState(combat_vk) & 0x8000)
+                _cd = bool(user32.GetAsyncKeyState(combat_vk) & 0x0001)
                 if _cd and not combat_key_down:
                     combat_on = not combat_on
                     cdec.reset()
@@ -2689,7 +2695,7 @@ def main():
         f_combo_dia_corr=(round(float(forager.get('combo_dia_corr', 0)), 3)
                           if forager else 0.0),
         f_takeover=bool(takeover),
-        f_takeover_key=str(args.takeover_key),
+        f_takeover_key=str(args.takeover_key).upper(),
         f_threat=(round(float(forager.get('threat_max', 0)), 3)
                   if forager else 0.0),
         f_ndodge=(int(forager.get('n_dodge', 0)) if forager else 0),
