@@ -1159,6 +1159,14 @@ def main():
                 if jump:
                     ic.tap("space", 0.09, kb)
 
+            def mouse_down(self, btn):
+                # 鼠标按下（普攻长按用）。★ 必须走 ex，否则接管闸门堵不住 ——
+                # 实测：接管后角色还在挥刀，就是这里直接调了 wclick。
+                wclick.down(btn)
+
+            def mouse_up(self, btn):
+                wclick.up(btn)
+
             def dodge(self):
                 """闪避 = **点一下 Shift**（2026-10-30 加）
 
@@ -1242,7 +1250,7 @@ def main():
         #    不然角色会一直往前走。漏路径的教训见 06 篇（闸门要一次堵死所有出口）。
         class _TakeoverGate:
             # 可开关的空操作：on=True 时一个键都不发
-            SEND = ("apply", "press", "hold", "click", "combat_", "dodge")
+            SEND = ("apply", "press", "hold", "click", "combat_", "dodge", "mouse")
 
             def __init__(self, inner):
                 self._inner = inner
@@ -1991,6 +1999,13 @@ def main():
                     if takeover:
                         if ex is not None and hasattr(ex, "release_all"):
                             ex.release_all()
+                        # ★ 普攻是**鼠标长按**，release_all 只松键盘键 —— 这里补一次鼠标
+                        if atk_holding:
+                            try:
+                                ex.mouse_up(str(args.attack_key).split("_", 1)[1])
+                            except Exception:
+                                pass
+                            atk_holding = False
                         if ex is not None and hasattr(ex, "on"):
                             ex.on = True
                         print(f"  [{ts:6.1f}s] ★★ 玩家接管 → 果蝇停手（按 "
@@ -2286,7 +2301,7 @@ def main():
                         if f_atk:
                             if _mouse_atk:
                                 if not atk_holding:
-                                    wclick.down(args.attack_key.split("_", 1)[1])
+                                    ex.mouse_down(args.attack_key.split("_", 1)[1])
                                     atk_holding = True
                                     atk_hold_until = ts + args.attack_hold
                             else:
@@ -2297,7 +2312,7 @@ def main():
                         # 抬起：不管这一拍还在不在打，到点就松（不然会一直按住）
                         if atk_holding and ts >= atk_hold_until:
                             if _mouse_atk:
-                                wclick.up(args.attack_key.split("_", 1)[1])
+                                ex.mouse_up(args.attack_key.split("_", 1)[1])
                             atk_holding = False
                         if f_atk:
                             # ★ 技能选择。--skill-auto 时用「先天轮换 + 学习微调」：
