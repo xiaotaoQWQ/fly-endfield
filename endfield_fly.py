@@ -284,6 +284,17 @@ def main():
     ap.add_argument("--dodge-cool", type=float, default=1.2,
                     help="两次闪避的最小间隔（默认 1.2 秒）。"
                          "游戏里闪避消耗体力、只能连放 2 次，所以不能狂按")
+    # ★★ 2026-10-31：闪避的信号源。用户要求「换成识别主视角的闪避」。
+    #   onnx   = MaaEnd 模型的 HUD 预警标签（EnemyDodge 等）—— 720p 下几乎不亮
+    #   cortex = **果蝇自己的 LPLC2/LC4 逼近回路**：视野里有东西加速膨胀就放电，
+    #            这是真正的「主视角」识别（输入是三维场景，不是 HUD 图标）
+    ap.add_argument("--dodge-src", default="both",
+                    choices=["onnx", "cortex", "both"],
+                    help="闪避用哪一路信号（默认 both = 两路取或）。"
+                         "cortex = 主视角的 looming 回路")
+    ap.add_argument("--dodge-z", type=float, default=1.5,
+                    help="cortex 这一路的阈值：LPLC2/LC4 的 z 分超过它就闪（默认 1.5）。"
+                         "技能键用的是 1.0；闪避有体力成本，所以取更保守的值")
     ap.add_argument("--attack-hold", type=float, default=1.0,
                     help="★ 普攻按住多少秒（默认 1.0）。改长按后时长超过决策拍"
                          "（400ms），所以按下/抬起落在**不同的拍**上 —— "
@@ -1613,6 +1624,7 @@ def main():
                 # ⚠ 这里用 forager 不是 fod —— fod 是后面觅食块才绑定的
                 #   （和 ONNX 那段同一个坑，踩过一次就够了）。
                 if (args.dodge and not args.no_dodge and ex is not None
+                        and args.dodge_src in ("onnx", "both")
                         and forager is not None
                         and st_onnx is not None and st_onnx.get("ok")):
                     if (st_onnx.get("enemy_attack")
@@ -1621,6 +1633,7 @@ def main():
                         ex.dodge()
                         forager["last_dodge"] = ts
                         forager["n_dodge"] = forager.get("n_dodge", 0) + 1
+                        forager["n_dodge_onnx"] = forager.get("n_dodge_onnx", 0) + 1
                         print(f"  [{ts:6.1f}s] ★ 闪避 → Shift 点一下  "
                               f"({st_onnx.get('threat_labels')}，"
                               f"第 {forager['n_dodge']} 次）")
@@ -1913,6 +1926,37 @@ def main():
                 # （红环扫描已在循环开头做过，这里直接用 m_on）
                 cm = cdec.step(r, dt=1.0 / args.hz, now=ts,
                                  combat=(combat_on and m_on))
+
+                # ---- 闪避 · 主视角（果蝇自己的逼近回路）----
+                # ★★ 2026-10-31：用户要求「换成识别主视角的闪避」。
+                #   LPLC2/LC4 是果蝇的 **looming 检测神经元**：视野里有东西
+                #   加速膨胀（= 敌人扑上来 / 技能砸过来）它们就放电。
+                #   同一条回路本来接的是技能键，现在**也接闪避** ——
+                #   这才是「主视角」：输入是屏幕中央的三维场景，不是 HUD 图标。
+                #
+                #   三道门（上升沿 / 战斗中 / 冷却）都是必须的：
+                #   录制里主视角帧间差在战斗中一直很大（p90=63/255），
+                #   没有门就会变成新的「乱按」。
+                if (args.dodge and not args.no_dodge and ex is not None
+                        and forager is not None
+                        and args.dodge_src in ("cortex", "both")
+                        and cm.get("ready") and m_on):
+                    _zs = float(cm.get("z_s") or 0.0)
+                    _z_now = _zs >= float(args.dodge_z)
+                    if (_z_now and not forager.get("dodge_z_armed", False)
+                            and ts - forager.get("last_dodge", -99.0) >= args.dodge_cool):
+                        ex.dodge()
+                        forager["last_dodge"] = ts
+                        forager["n_dodge"] = forager.get("n_dodge", 0) + 1
+                        forager["n_dodge_cortex"] = forager.get("n_dodge_cortex", 0) + 1
+                        forager["z_s_max"] = max(float(forager.get("z_s_max", -99.0)), _zs)
+                        _zt = forager.setdefault("z_s_cnt", {})
+                        for _th in (0.5, 1.0, 1.5, 2.0):
+                            if _zs >= _th:
+                                _zt[str(_th)] = _zt.get(str(_th), 0) + 1
+                        print(f"  [{ts:6.1f}s] ★ 闪避 ← 主视角 looming z={_zs:+.2f}  "
+                              f"第 {forager['n_dodge']} 次")
+                    forager["dodge_z_armed"] = _z_now
                 yield_dir = (combat_on and args.combat_yield == "attack"
                              and (cm["attack"] or cm["skill"]))
 
@@ -2769,6 +2813,9 @@ def main():
                     print(f"  补丁已存：{_n:,} 条边 · 漂移 "
                           f"连携 看到{forager.get('n_combo_seen', 0)}次/按{forager['n_combo']}次"
                           f"（成 {forager.get('n_combo_ok', 0)}/败 {forager.get('n_combo_fail', 0)}）"
+                          f"· 闪避 主视角{forager.get('n_dodge_cortex', 0)}次"
+                          f"/ONNX{forager.get('n_dodge_onnx', 0)}次"
+                          f"· looming z最大{float(forager.get('z_s_max', 0)):+.2f} {forager.get('z_s_cnt', {})} "
         f"（饥饿拦住 {forager.get('n_combo_blocked', 0)}）· "
         f"{forager['mb'].drift:.1f} · 奖赏 {forager['n_reward']} "
                           f"惩罚 {forager['n_punish']} → {args.forage_patch}")
