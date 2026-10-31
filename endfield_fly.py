@@ -1957,6 +1957,15 @@ def main():
                         print(f"  [{ts:6.1f}s] ★ 闪避 ← 主视角 looming z={_zs:+.2f}  "
                               f"第 {forager['n_dodge']} 次")
                     forager["dodge_z_armed"] = _z_now
+
+                # ★ 标定用：战斗中每 10 秒打一行 looming z（暂停/中断也能拿到分布）
+                if (forager is not None and m_on and cm.get("ready")
+                        and ts - forager.get("z_log_t", -99.0) >= 10.0):
+                    forager["z_log_t"] = ts
+                    _zcnt = forager.get("z_s_cnt", {})
+                    print(f"  [{ts:6.1f}s] looming z={float(cm.get('z_s') or 0):+.2f}"
+                          f" · 阈值 {float(args.dodge_z):.2f}"
+                          f" · 累计 ≥1.0 {_zcnt.get('1.0', 0)} 拍 / ≥1.5 {_zcnt.get('1.5', 0)} 拍")
                 yield_dir = (combat_on and args.combat_yield == "attack"
                              and (cm["attack"] or cm["skill"]))
 

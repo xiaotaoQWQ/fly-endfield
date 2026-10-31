@@ -141,9 +141,11 @@ class AutoOutcome:
 
         # ---------- 挨打 ----------
         hurt = False
+        hp_valid = False
         if hp_img is not None:
             f = self.hp.step(hp_img)
             if not np.isnan(f):
+                hp_valid = True
                 if self.last_hp is not None:
                     drop = self.last_hp - f
                     if drop >= self.drop_frac:
@@ -153,9 +155,16 @@ class AutoOutcome:
         if not in_combat:
             self.last_hp = None       # 血条会消失，别把"消失"当掉血
         if vig_left is not None and vig_right is not None:
-            if self.vig.step(vig_left, vig_right):
+            vig_on = self.vig.step(vig_left, vig_right)
+            # ★★ 2026-10-31：**血条可读时，红晕单独不能判挨打**。
+            #   实测（77 秒实机日志）：角色卡在墙角 + 红场景，红晕 37~89，
+            #   5 秒内连报 6 次「挨打」，全是误报；而真挨打那一下红晕是 115。
+            #   951 帧录制里红晕 > 30 的帧有 138 个（14.5%），本来就分不开。
+            #   所以：**血条读得到就用掉血**（drop_frac），读不到才退回红晕 ——
+            #   「没有数据」不等于「数据说没有」，这是本项目第 3 次踩同一个坑。
+            if vig_on and not hp_valid:
                 hurt = True
-                why.append(f"红晕 {self.vig.val:.0f}")
+                why.append(f"红晕 {self.vig.val:.0f}(血条不可读)")
         if hurt and t - self.last_punish >= self.punish_cool:
             pun = self.punish_amt
             self.last_punish = t
