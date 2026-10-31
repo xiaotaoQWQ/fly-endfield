@@ -500,6 +500,14 @@ def main():
                     help="菱形这一路要连续几帧过半才算数（默认 1 = 不防抖）。"
                          "设 3 = 最近 3 拍里过半（约 0.4~0.8 秒延迟）；"
                          "单帧噪声多的时候再开")
+    # ★★ 2026-10-31：多角色提示并存时要**追加按**。
+    #   原来只有「上升沿」才按一次 —— 三个角色同时亮提示时 m_combo 一直为 True，
+    #   第二、三个提示永远等不到上升沿，于是一整段只按了一次。
+    ap.add_argument("--combo-repeat", type=float, default=0.7,
+                    help="提示还在时，隔多少秒**再按一次**（默认 0.7）。"
+                         "多角色提示并存时靠它逐个按掉；设 0 = 只按上升沿（旧行为）")
+    ap.add_argument("--combo-repeat-max", type=int, default=4,
+                    help="一次提示事件里最多连按几次（默认 4 = 队伍人数上限）")
     ap.add_argument("--forage-decay", type=float, default=1e-4,
                     help="突触衰减（遗忘）。只增不减会漂走，跑几十次行为就崩")
     ap.add_argument("--forage-save-sec", type=float, default=30.0,
@@ -2286,6 +2294,9 @@ def main():
                             #     [9.6s] 第1次 [10.1s] 第2次 [10.5s] 第3次 [11.0s] 第4次
                             _combo_edge = bool(m_combo) and not fod.get("combo_was", False)
                             fod["combo_was"] = bool(m_combo)
+                            if _combo_edge:
+                                fod["combo_burst"] = 0   # 新一轮提示，重置连按预算
+                                fod["combo_locked"] = False
                             # ★ 诊断计数：区分「饿饿拦住」和「上升沿漏检」
                             #   seen   = 看到提示的上升沿次数
                             #   blocked= 因为饿饿不够而没按的次数
@@ -2309,10 +2320,18 @@ def main():
                             _full_prev = int(fod.get("combo_full_n", 0))
                             fod["combo_full_n"] = _full_n
                             _full_any = _full_n > _full_prev
-                            _fire = _combo_edge or (
+                            _burst = int(fod.get("combo_burst", 0))
+                            _repeat_ok = (bool(m_combo) and not _combo_edge
+                                          and not fod.get("combo_locked", False)
+                                          and args.combo_repeat > 0
+                                          and _burst < int(args.combo_repeat_max)
+                                          and ts - fod["last_combo"] >= args.combo_repeat)
+                            _fire = _combo_edge or _repeat_ok or (
                                 _full_any
                                 and args.combo_cool_full > 0
                                 and ts - fod["last_combo"] >= args.combo_cool_full)
+                            _fire_kind = ("提示" if _combo_edge else
+                                          ("追加" if _repeat_ok else "兜底"))
                             if (_fire
                                     and fod["hg"].h >= args.combo_hunger
                                     and ts - fod["last_combo"] >= args.combo_cool):
@@ -2320,8 +2339,8 @@ def main():
                                 ex.combat_press(args.combo_key)
                                 fod["last_combo"] = ts
                                 fod["n_combo"] += 1
-                                if _combo_edge:
-                                    fod["combo_wait"] = ts
+                                fod["combo_burst"] = _burst + 1
+                                fod["combo_wait"] = ts
                                 # ★ 把 ONNX 分数写进日志 ——
                                 #   用来区分「真提示」和「flicker」：
                                 #     真提示：分数稳在 0.8~0.9
@@ -2352,7 +2371,7 @@ def main():
                                     _cnow["t"] = ts
                                 else:
                                     _cnow["n"] = 0   # 兜底不算"提示按不掉"
-                                if _cnow["n"] == 4:
+                                if _cnow["n"] == int(args.combo_repeat_max):
                                     print(f"  ⚠ 连携技连按 4 次（键 "
                                           f"「{args.combo_key}」）提示仍不消失 —— "
                                           f"多半是**键位设错了**。"
@@ -2375,23 +2394,28 @@ def main():
                                       f"  (饥饿 {fod['hg'].h:.2f}, "
                                       f"分 {_csc:.2f}{_cbox}, 菱 {_dia_corr:.2f}, "
                                       f"选中槽 {_sel}, 满的槽 {_cf}, "
-                                      f"{('提示·' + _combo_src) if _combo_edge else '兜底'}, "
+                                      f"{(_fire_kind + '·' + _combo_src) if _fire_kind != '兜底' else '兜底'}, "
                                       f"第 {fod['n_combo']} 次)")
 
                             # ★ 效果自检（2026-10-31）：按完 E 之后看**提示有没有消失**。
-                            #   消失 = 这一下真生效；1.2 秒还在 = 没生效
-                            #   （键没送到游戏 / 按错键 / 提示是别人的）。
-                            #   有这个才能回答"到底按对没有"，而不是只看按了几下。
+                            #   注意：提示还在**不一定**是没生效 —— 可能是别的角色的提示还亮着
+                            #   （多角色并存）。所以先按 --combo-repeat-max 次数，按满了还在才判 NG。
                             _cw = fod.get("combo_wait")
                             if _cw is not None:
                                 if not m_combo:
                                     fod["n_combo_ok"] = fod.get("n_combo_ok", 0) + 1
-                                    print(f"  [{ts:6.1f}s] OK 连携生效（提示消失 {ts - _cw:.1f}s，累计 {fod['n_combo_ok']} 成 / {fod.get('n_combo_fail', 0)} 败）")
+                                    print(f"  [{ts:6.1f}s] OK 连携生效（提示消失 {ts - _cw:.1f}s，连按 {fod.get('combo_burst', 0)} 次，累计 {fod['n_combo_ok']} 成 / {fod.get('n_combo_fail', 0)} 败）")
                                     fod["combo_wait"] = None
-                                elif ts - _cw >= 1.2:
+                                    fod["combo_burst"] = 0
+                                    fod["combo_locked"] = False
+                                elif (int(fod.get("combo_burst", 0)) >= int(args.combo_repeat_max)
+                                      and ts - _cw >= 1.0):
                                     fod["n_combo_fail"] = fod.get("n_combo_fail", 0) + 1
-                                    print(f"  [{ts:6.1f}s] NG 连携**没生效**（1.2s 后提示还在，累计 {fod.get('n_combo_ok', 0)} 成 / {fod['n_combo_fail']} 败）")
+                                    print(f"  [{ts:6.1f}s] NG 连携**没生效**（连按 {fod['combo_burst']} 次、1.2s 后提示还在，累计 {fod.get('n_combo_ok', 0)} 成 / {fod['n_combo_fail']} 败）")
                                     fod["combo_wait"] = None
+                                    fod["combo_burst"] = 0
+                                    # 按满了还在 → 锁住，别一直刷；等提示消失再解锁
+                                    fod["combo_locked"] = True
                     # 指令列表一律英文（用户要求）
                     action_txt += ("  EAT-ATK" if f_atk else "  HUNGRY")
 
