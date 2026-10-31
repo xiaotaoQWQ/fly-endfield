@@ -292,9 +292,17 @@ def main():
                     choices=["onnx", "cortex", "both"],
                     help="闪避用哪一路信号（默认 both = 两路取或）。"
                          "cortex = 主视角的 looming 回路")
-    ap.add_argument("--dodge-z", type=float, default=1.5,
-                    help="cortex 这一路的阈值：LPLC2/LC4 的 z 分超过它就闪（默认 1.5）。"
-                         "技能键用的是 1.0；闪避有体力成本，所以取更保守的值")
+    ap.add_argument("--dodge-z", type=float, default=1.0,
+                    help="cortex 这一路的阈值：LPLC2/LC4 的 z 分超过它就闪（默认 1.0）。"
+                         "★ 2026-10-31 从 1.5 降到 1.0：实机 80 秒里 z 只有 3 拍过 1.5 —— "
+                         "「很多攻击能闪却没闪」是信号太稀疏，不是不知道该闪")
+    ap.add_argument("--dodge-flash", action="store_true", default=True,
+                    help="主视角第二个判据：中心区**闪红/闪光**（攻击特效）也能触发闪避（默认开）")
+    ap.add_argument("--no-dodge-flash", action="store_true",
+                    help="关掉中心闪红这一路")
+    ap.add_argument("--dodge-flash-red", type=float, default=40.0,
+                    help="中心区 R−G 超过多少算「攻击闪光」（默认 40）。实测：中位 -2.2 / "
+                         "p90 17.5 / p99 49.3，取 40 约 1 个百分点的帧")
     ap.add_argument("--attack-hold", type=float, default=1.0,
                     help="★ 普攻按住多少秒（默认 1.0）。改长按后时长超过决策拍"
                          "（400ms），所以按下/抬起落在**不同的拍**上 —— "
@@ -1953,6 +1961,13 @@ def main():
                         and cm.get("ready") and m_on):
                     _zs = float(cm.get("z_s") or 0.0)
                     _z_now = _zs >= float(args.dodge_z)
+                    # ★ 每拍都统计（不是只在按下时）—— 才知道信号到底稀不稀疏
+                    forager["z_s_max"] = max(float(forager.get("z_s_max", -99.0)), _zs)
+                    _zt = forager.setdefault("z_s_cnt", {})
+                    forager["z_s_n"] = int(forager.get("z_s_n", 0)) + 1
+                    for _th in (0.3, 0.5, 0.8, 1.0, 1.5, 2.0):
+                        if _zs >= _th:
+                            _zt[str(_th)] = _zt.get(str(_th), 0) + 1
                     if (_z_now and not forager.get("dodge_z_armed", False)
                             and ts - forager.get("last_dodge", -99.0) >= args.dodge_cool):
                         ex.dodge()
@@ -1961,25 +1976,54 @@ def main():
                         forager["n_dodge_cortex"] = forager.get("n_dodge_cortex", 0) + 1
                         forager["dodge_wait"] = ts
                         forager["dodge_hp0"] = forager.get("auto_hp")
-                        forager["z_s_max"] = max(float(forager.get("z_s_max", -99.0)), _zs)
-                        _zt = forager.setdefault("z_s_cnt", {})
-                        for _th in (0.5, 1.0, 1.5, 2.0):
-                            if _zs >= _th:
-                                _zt[str(_th)] = _zt.get(str(_th), 0) + 1
                         print(f"  [{ts:6.1f}s] ★ 闪避 ← 主视角 looming z={_zs:+.2f}  "
                               f"第 {forager['n_dodge']} 次")
                     forager["dodge_z_armed"] = _z_now
+
+                # ---- 闪避 · 主视角「攻击闪光」（第二个主视角判据，2026-10-31）----
+                #   终末地的攻击特效是**屏幕中心一大片红/白闪**。LPLC2/LC4 只在「有东西
+                #   加速膨胀」时放电，可很多攻击是**特效炸开**而不是物体冲过来 → 认不到。
+                #   所以补一条：中心区 R−G 突增（红闪）也当威胁。实测中位 -2.2、p99 49.3，
+                #   取 40 ≈ 1% 的帧，和「真有特效」的那一下对得上。
+                if (args.dodge and not args.no_dodge and ex is not None
+                        and forager is not None and args.dodge_flash
+                        and not args.no_dodge_flash
+                        and args.dodge_src in ("cortex", "both")
+                        and lf.img is not None):
+                    _frc = forager.get("flash_rect")
+                    if _frc is None:
+                        _frc = (int(prof.w * 0.22), int(prof.h * 0.10),
+                                int(prof.w * 0.56), int(prof.h * 0.60))
+                        forager["flash_rect"] = _frc
+                    _fc = lf.at(*_frc)
+                    if _fc is not None:
+                        _cs = _fc[::4, ::4].astype(np.int16)
+                        _rg = float((_cs[:, :, 0] - _cs[:, :, 1]).mean())
+                        forager["flash_rg"] = round(_rg, 1)
+                        _f_now = _rg >= float(args.dodge_flash_red)
+                        if (_f_now and not forager.get("flash_armed", False)
+                                and ts - forager.get("last_dodge", -99.0) >= args.dodge_cool):
+                            ex.dodge()
+                            forager["last_dodge"] = ts
+                            forager["n_dodge"] = forager.get("n_dodge", 0) + 1
+                            forager["n_dodge_flash"] = forager.get("n_dodge_flash", 0) + 1
+                            forager["dodge_wait"] = ts
+                            forager["dodge_hp0"] = forager.get("auto_hp")
+                            print(f"  [{ts:6.1f}s] ★ 闪避 ← 主视角 中心闪红 R−G={_rg:+.0f}  "
+                                  f"第 {forager['n_dodge']} 次")
+                        forager["flash_armed"] = _f_now
 
                 # ★ 标定用：战斗中每 10 秒打一行 looming z（暂停/中断也能拿到分布）
                 if (forager is not None and m_on and cm.get("ready")
                         and ts - forager.get("z_log_t", -99.0) >= 10.0):
                     forager["z_log_t"] = ts
                     _zcnt = forager.get("z_s_cnt", {})
-                    print(f"  [{ts:6.1f}s] looming z={float(cm.get('z_s') or 0):+.2f}"
-                          f" · 阈值 {float(args.dodge_z):.2f}"
-                          f" · 累计 ≥1.0 {_zcnt.get('1.0', 0)} 拍 / ≥1.5 {_zcnt.get('1.5', 0)} 拍")
-                yield_dir = (combat_on and args.combat_yield == "attack"
-                             and (cm["attack"] or cm["skill"]))
+                    _zn = max(1, int(forager.get("z_s_n", 0)))
+                    print(f"  [{ts:6.1f}s] 主视角 z={float(cm.get('z_s') or 0):+.2f}"
+                          f" · 闪红 {float(forager.get('flash_rg', 0)):+.0f}"
+                          f" · 阈值 z≥{float(args.dodge_z):.1f}/闪红≥{float(args.dodge_flash_red):.0f}"
+                          f" · 过阈拍次 ≥0.5 {_zcnt.get('0.5', 0)}/{_zn}"
+                          f" ≥0.8 {_zcnt.get('0.8', 0)} ≥1.0 {_zcnt.get('1.0', 0)}")
 
                 # 放电统计：速率模型没有离散脉冲，所以用「显著高于整体的神经元数」当代理量。
                 # 阈值取 μ+2σ（标准离群口径）。
@@ -2876,6 +2920,7 @@ def main():
                           f"（成 {forager.get('n_combo_ok', 0)}/败 {forager.get('n_combo_fail', 0)}）"
                           f"· 闪避 主视角{forager.get('n_dodge_cortex', 0)}次"
                           f"/ONNX{forager.get('n_dodge_onnx', 0)}次"
+                          f"/闪红{forager.get('n_dodge_flash', 0)}次"
                           f"· 成{forager.get('n_dodge_ok', 0)}/败{forager.get('n_dodge_fail', 0)}"
                           f"· looming z最大{float(forager.get('z_s_max', 0)):+.2f} {forager.get('z_s_cnt', {})} "
         f"（饥饿拦住 {forager.get('n_combo_blocked', 0)}）· "
