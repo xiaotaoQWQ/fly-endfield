@@ -166,6 +166,9 @@ def main():
     ap.add_argument("--overlay-scale", type=float, default=1.0,
                     help="叠加面板缩放（0.4~1.0，默认 1.0）。危机合约建议 0.6~0.7"
                          "并把 --overlay-x 设 0，避免压住连携提示区")
+    # ★ 精简版：底部那两条（战斗/觅食）平时很少看，去掉能矮 172px。
+    ap.add_argument("--overlay-lite", action="store_true",
+                    help="精简叠加面板：去掉底部战斗/觅食条，只留主区+接管条（更紧凑）")
     ap.add_argument("--overlay-every", type=int, default=1,
                     help="每 N 拍刷新一次叠加（渲染约 60-100ms，太勤会拖慢闭环）")
     ap.add_argument("--dry", action="store_true", help="只决策不按键")
@@ -969,7 +972,10 @@ def main():
     # ★ 底部按需预留：--forage 模式下战斗条永远空着，白占 88px。
     #   两条都用才都留，否则只留用得上的那条（Overlay 尺寸启动时定死）。
     _strips = tuple(x for x, on in (("combat", args.combat),
-                                    ("forage", args.forage)) if on)
+                    ("forage", args.forage)) if on)
+    if args.overlay_lite:
+        # 精简模式：只留「接管提示条」，主区以外的条全部去掉
+        _strips = ("takeover",)
     if args.overlay:
         from fly_panel import FlyPanel
         panel = FlyPanel(strips=_strips or ("combat", "forage"))
