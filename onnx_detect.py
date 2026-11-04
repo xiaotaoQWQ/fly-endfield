@@ -112,7 +112,9 @@ class OnnxDetect:
     """战斗界面识别。缺模型时**静默关闭**（ok=False），调用方退回模板检测。"""
 
     def __init__(self, model_path: str = None, conf: float = 0.35,
-                 iou: float = 0.45, verbose: bool = True):
+                 iou: float = 0.45, verbose: bool = True, threat_conf: float = 0.0):
+        # ★ 威胁标签单独用的低阈值（闪避主判据）。0 = 和 conf 一样。
+        self.threat_conf = float(threat_conf or 0.0)
         self.model_path = model_path or DEFAULT_MODEL
         self.conf = float(conf)
         self.iou = float(iou)
@@ -214,6 +216,27 @@ class OnnxDetect:
                 _cy = (raw[1, _j] - raw[3, _j] / 2 - pt) / s
                 out["combo_raw_box"] = (float(_cx), float(_cy))
 
+        # ★★ 2026-11-01：威胁标签（闪避主判据）**必须在提前返回之前**扫，
+        #   因为常见情况就是「一个框都过不了 conf」—— 而低阈值下它可能已经认出来了。
+        if self.threat_conf > 0.0:
+            _bt = 0.0
+            _bl = {}
+            for _nm in (ENEMY_ATTACK, ENEMY_CHARGE, ENEMY_DODGE,
+                        ENEMY_DODGE_MAIN):
+                _ci2 = getattr(self, "inv", {}).get(_nm)
+                if _ci2 is None or _ci2 >= cls.shape[0]:
+                    continue
+                _row2 = cls[_ci2]
+                _sc2 = float(_row2[int(_row2.argmax())])
+                if _sc2 >= self.threat_conf:
+                    _bl[_nm] = round(_sc2, 3)
+                    _bt = max(_bt, _sc2)
+            out["threat_low"] = round(_bt, 3)
+            out["threat_low_labels"] = _bl
+            if _bt > 0.0:
+                out["threat_max"] = _bt
+                out["enemy_attack"] = True
+
         keep = best > self.conf
         if not keep.any():
             out.update(ok=True, ms=self.ms)
@@ -272,16 +295,17 @@ class OnnxDetect:
         }
         # ★ 原始分（不管阈值之上还是之下都记最高分）——
         #   用来区分「没威胁」和「有威胁但分数不够」，和 combo_raw 一个道理。
-        out["threat_max"] = float(max(
-            [d["score"] for d in dets
-             if d["label"] in (ENEMY_ATTACK, ENEMY_CHARGE,
-                               ENEMY_DODGE, ENEMY_DODGE_MAIN)] or [0.0]))
+        out["threat_max"] = max(
+            float(out.get("threat_max") or 0.0),
+            float(max([d["score"] for d in dets
+                       if d["label"] in (ENEMY_ATTACK, ENEMY_CHARGE,
+                                         ENEMY_DODGE, ENEMY_DODGE_MAIN)] or [0.0])))
         out["end_skill"] = bool(by_name.get(END_SKILL))
         # ★ 三个预警标签任一为真就算「有威胁」：
         #   Charging = 地面攻击蓄力 / AccumulatingPower = 蓄力 / Dodge = 该闪了
         #   实测（428 帧录制）这三个几乎不亮（0~0.2%），但实机分辨率更高，
         #   值得先接上跑一次看数据，别凭录制就下结论。
-        out["enemy_attack"] = bool(by_name.get(ENEMY_ATTACK)
+        out["enemy_attack"] = bool(out.get("enemy_attack") or by_name.get(ENEMY_ATTACK)
                                    or by_name.get(ENEMY_CHARGE)
                                    or by_name.get(ENEMY_DODGE)
                                    or by_name.get(ENEMY_DODGE_MAIN))

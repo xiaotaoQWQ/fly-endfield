@@ -333,6 +333,16 @@ def main():
     #   onnx   = MaaEnd 模型的 HUD 预警标签（EnemyDodge 等）—— 720p 下几乎不亮
     #   cortex = **果蝇自己的 LPLC2/LC4 逼近回路**：视野里有东西加速膨胀就放电，
     #            这是真正的「主视角」识别（输入是三维场景，不是 HUD 图标）
+    # ★★ 2026-11-01：主判据换成 MaaEnd 的整屏 ONNX 威胁标签；
+    #   果蝇的主视角 looming / 闪红 降级为**辅助**（主判据安静时才出手）。
+    ap.add_argument("--dodge-primary", default="onnx",
+                    choices=["onnx", "cortex"],
+                    help="闪避主判据：onnx = MaaEnd 整屏威胁标签（默认）；"
+                         "cortex = 果蝇主视角 looming")
+    ap.add_argument("--dodge-onnx-conf", type=float, default=0.15,
+                    help="威胁标签单独用的低阈值（默认 0.15，比检测阈值 0.22 更低）")
+    ap.add_argument("--dodge-aux-quiet", type=float, default=4.0,
+                    help="主判据最近 N 秒内有动作时，辅助判据不出手（默认 4s，防重复闪）")
     ap.add_argument("--dodge-src", default="both",
                     choices=["onnx", "cortex", "both"],
                     help="闪避用哪一路信号（默认 both = 两路取或）。"
@@ -1585,16 +1595,16 @@ def main():
     if args.onnx and not args.no_onnx:
         from onnx_detect import OnnxDetect
         _omp = args.onnx_model or None
-        onnx_det = OnnxDetect(_omp, conf=args.onnx_conf) if _omp else \
-            OnnxDetect(conf=args.onnx_conf)
-        if onnx_det.ok:
-            # ★ 推理放独立线程 —— 实测同步调要 168~249 ms，会和主循环抢 CPU，
-            #   249+87(截图)=336/400ms 预算，卡一下就掉拍。
-            #   线程版主循环只 submit/read，立刻返回。
-            from onnx_detect import OnnxThread
-            onnx_th = OnnxThread(onnx_det, hz=args.onnx_hz).start()
-            print(f"  ★ ONNX 识别已启用（独立线程 {args.onnx_hz:.0f} Hz，"
-                  f"替代连携技模板检测）")
+        onnx_det = OnnxDetect(_omp, conf=args.onnx_conf,
+                              threat_conf=args.dodge_onnx_conf) if _omp else \
+            OnnxDetect(conf=args.onnx_conf, threat_conf=args.dodge_onnx_conf)
+        # ★ 推理放独立线程 —— 实测同步调要 168~249 ms，会和主循环抢 CPU，
+        #   249+87(截图)=336/400ms 预算，卡一下就掉拍。
+        #   线程版主循环只 submit/read，立刻返回。
+        from onnx_detect import OnnxThread
+        onnx_th = OnnxThread(onnx_det, hz=args.onnx_hz).start()
+        print(f"  ★ ONNX 识别已启用（独立线程 {args.onnx_hz:.0f} Hz，"
+        f"替代连携技模板检测）")
 
     # ---- 「挑战成功」检测（副本完成）----
     # ★ 用户要求：任务完成时给 50 次奖励 + 饥饿值不再上升。
@@ -1805,19 +1815,24 @@ def main():
                         and args.dodge_src in ("onnx", "both")
                         and forager is not None
                         and st_onnx is not None and st_onnx.get("ok")):
-                    if (st_onnx.get("enemy_attack")
+                    _oa = bool(st_onnx.get("enemy_attack"))
+                    # ★ 主判据：**上升沿**触发（不会一直按住），并记录"主判据刚动过"
+                    if (_oa and not forager.get("dodge_onnx_armed", False)
                             and ts - forager.get("last_dodge", -99.0)
                             >= args.dodge_cool):
                         ex.dodge()
                         forager["last_dodge"] = ts
+                        forager["last_dodge_onnx"] = ts
                         forager["n_dodge"] = forager.get("n_dodge", 0) + 1
                         forager["n_dodge_onnx"] = forager.get("n_dodge_onnx", 0) + 1
                         forager["dodge_wait"] = ts
                         forager["dodge_hp0"] = forager.get("auto_hp")
                         forager["dodge_odo0"] = (float(odo.x), float(odo.y))
                         print(f"  [{ts:6.1f}s] ★ 闪避 → Shift 点一下  "
-                              f"({st_onnx.get('threat_labels')}，"
+                              f"(分 {float(st_onnx.get('threat_max') or 0):.2f} "
+                              f"{st_onnx.get('threat_low_labels') or st_onnx.get('threat_labels')}，"
                               f"第 {forager['n_dodge']} 次）")
+                    forager["dodge_onnx_armed"] = _oa
 
                 # 连携技（E）提示：只在战斗中、且能用的时候才出现
                 m_combo = False
@@ -2166,9 +2181,15 @@ def main():
                 #   三道门（上升沿 / 战斗中 / 冷却）都是必须的：
                 #   录制里主视角帧间差在战斗中一直很大（p90=63/255），
                 #   没有门就会变成新的「乱按」。
+                # ★ 辅助判据门（2026-11-01）：主判据(ONNX)最近 N 秒动过 → 辅助不出手，避免重复闪
+                _aux_ok = (args.dodge_primary == "cortex"
+                        or forager is None
+                        or ts - forager.get("last_dodge_onnx", -99.0)
+                           >= float(args.dodge_aux_quiet))
                 if (args.dodge and not args.no_dodge and ex is not None
                         and forager is not None
                         and args.dodge_src in ("cortex", "both")
+                        and _aux_ok
                         and cm.get("ready") and m_on):
                     _zs = float(cm.get("z_s") or 0.0)
                     _z_now = _zs >= float(args.dodge_z)
@@ -2201,6 +2222,7 @@ def main():
                         and forager is not None and args.dodge_flash
                         and not args.no_dodge_flash
                         and args.dodge_src in ("cortex", "both")
+                        and _aux_ok
                         and lf.img is not None):
                     _frc = forager.get("flash_rect")
                     if _frc is None:

@@ -44,7 +44,7 @@ python -u -X utf8 endfield_fly.py ^
     --cc-debug ^
     --forage --auto-outcome --combo --skill-auto --ult ^
     --always-combat --combat ^
-    --combo-hunger 0.0 --combo-cool 0 --combo-cool-full 0 --dodge-cool 0.6 ^
+    --dodge-primary onnx --dodge-onnx-conf 0.15 --combo-hunger 0.0 --combo-cool 0 --combo-cool-full 0 --dodge-cool 0.6 ^
     --attack-hold 1.0 ^
     --onnx-hz 6 --onnx-conf 0.22 ^
     --seconds 600 ^

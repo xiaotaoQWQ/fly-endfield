@@ -14,6 +14,31 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-11-01 · 闪避主判据换成 MaaEnd 整屏识别，果蝇 looming 降为辅助
+
+**为什么**：用户要求「闪避换成 maaend 的整屏检测攻击预警图标/特效框，果蝇的放大闪避当辅助」。
+
+**改哪**：
+- onnx_detect.py：新增 threat_conf（威胁标签**单独的低阈值**，默认 0.15 < 检测 0.22）；
+  关键：这段扫描放在「一个框都过不了 conf 就提前 return」**之前** ——
+  否则最常见的「主阈值下全灭」场景根本走不到低阈值那一步（第一版就踩了）。
+  输出新增 threat_low / threat_low_labels；threat_max / enemy_attack 与低阈值结果**取或合并**
+- endfield_fly.py：
+  · --dodge-primary onnx|cortex（默认 onnx）
+  · --dodge-onnx-conf 0.15（威胁标签低阈值，透传 OnnxDetect）
+  · --dodge-aux-quiet 4.0（主判据最近 N 秒动过 → 辅助判据不出手）
+  · ONNX 这一路改成**上升沿**触发（原来 level 触发会一直按），并记 last_dodge_onnx
+  · 主视角 looming / 闪红两路加 _aux_ok 门（forager 为 None 时也安全）
+- start_cc.cmd：加 --dodge-primary onnx --dodge-onnx-conf 0.15
+
+**现在的优先级**：ONNX 威胁标签（主）→ 4 秒内若主判据动过，辅助不出手；
+否则 looming(z≥1.0) / 中心闪红(R−G≥40) 照常兜底。
+
+**怎么验**：日志里闪避行会打印分数和命中的标签：
+  ★ 闪避 → Shift 点一下 (分 0.21 {EnemyAttackGroundDodge: 0.21}，第 3 次)
+
+---
+
 ## 2026-11-01 · 战斗条：攻击/技能两条进度条**并排**
 
 **为什么**：用户要求「战斗模式中，攻击和技能两个进度条并排放」。
