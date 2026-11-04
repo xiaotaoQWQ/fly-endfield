@@ -368,6 +368,10 @@ def main():
                          "给得压得住学习偏移 —— 学不坏")
     ap.add_argument("--skill-interval", type=float, default=4.0,
                     help="战技的最小间隔秒数（默认 4.0）。战技有冷却，狂按只会空转")
+    # ★ 技能「地板间隔」：即使 skill_interval 调到 0，也不会每拍都按 ——
+    #   游戏本身有技能冷却，按得更快只是白按 + 日志刷屏（实测「后期疯狂按技能1」）。
+    ap.add_argument("--skill-min-gap", type=float, default=0.8,
+                    help="技能按压的最小间隔（秒，默认 0.8）")
     ap.add_argument("--forage-always-attack", action="store_true",
                     help="★ 默认**关**：红叉（进入战斗）是攻击的必要前提，"
                          "没进战斗不许挥刀。加上这个开关才允许它无条件出手")
@@ -1757,6 +1761,23 @@ def main():
                     m_combo = bool(st_onnx["combo_active"])
                     if m_combo:
                         _combo_src = "onnx"
+                # ★★ 2026-11-01：ONNX 这一路在危机合约里可能**一直亮**（HUD 不一样、conf 0.22
+                #   很容易误检）。一路常亮会把「上升沿」永久吃掉 —— 菱形就算看见也不会按
+                #   （实测：换到合约场景之后「E 又不出手了」）。
+                #   对策：连续亮 > 4 秒判为误检，这一路先忽略；掉下来自动恢复。
+                if (forager is not None and st_onnx is not None and st_onnx.get("ok")
+                        and st_onnx.get("combo_active")):
+                    if forager.get("onnx_t0") is None:
+                        forager["onnx_t0"] = ts
+                    elif ts - forager["onnx_t0"] > 4.0:
+                        if not forager.get("onnx_stuck"):
+                            forager["onnx_stuck"] = True
+                            print(f"  [{ts:6.1f}s] ⚠ ONNX 连携提示连续亮 >4s → 判为误检，这一路先忽略",
+                                  flush=True)
+                        m_combo = False
+                elif forager is not None:
+                    forager["onnx_t0"] = None
+                    forager["onnx_stuck"] = False
                 elif kmark is not None:
                     _kr = kmark.rect              # 用标定值，不依赖命令行
                     _kimg = lf.at(*_kr)
@@ -2358,7 +2379,9 @@ def main():
                             #   蘑菇体的四个分区（DAN→MBON 投射聚出来的）给它做微调。
                             #   否则退回老行为：永远按 --skill-key。
                             _sk = None
-                            if ts - fod["last_skill"] >= args.skill_interval:
+                            if (ts - fod["last_skill"]
+                                    >= max(float(args.skill_interval),
+                                                float(args.skill_min_gap))):
                                 if args.skill_auto:
                                     from mb_learn import select_skill
                                     _slot = select_skill(
@@ -2466,7 +2489,14 @@ def main():
                             #   实测：提示会持续 1.5~2 秒，电平触发的话
                             #   （--combo-cool 0）会连按 4 次 —— 日志里就是这个：
                             #     [9.6s] 第1次 [10.1s] 第2次 [10.5s] 第3次 [11.0s] 第4次
-                            _combo_edge = bool(m_combo) and not fod.get("combo_was", False)
+                            # ★★ 每一路**各自判上升沿**再取或 —— 只要有一路卡在 True，
+                            #   原来那条「整体上升沿」就永远不成立（E 就再也不按了）。
+                            _dia_edge = bool(forager.get("combo_dia")) and not fod.get("dia_was", False)
+                            _onnx_edge = bool(forager.get("onnx_combo")) and not fod.get("onnx_was", False)
+                            fod["dia_was"] = bool(forager.get("combo_dia"))
+                            fod["onnx_was"] = bool(forager.get("onnx_combo"))
+                            _combo_edge = ((bool(m_combo) and not fod.get("combo_was", False))
+                                           or _dia_edge or _onnx_edge)
                             fod["combo_was"] = bool(m_combo)
                             if _combo_edge:
                                 fod["combo_burst"] = 0   # 新一轮提示，重置连按预算
