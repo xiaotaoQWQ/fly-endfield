@@ -1016,6 +1016,21 @@ def main():
     if not win:
         sys.exit("终末地没在运行")
     hwnd, x, y, w, h = win
+
+    # ★★ 2026-11-01：窗口必须**完整落在屏幕内**。实测踩过：抓到一个
+    #   1901×930 @ (2860,363) 的窗口（比显示器还宽），右边一截在屏幕外 →
+    #   连携提示/血条/红环全部"被挡住"，E 永不触发、血=—。
+    try:
+        _u = ctypes.windll.user32
+        _vx, _vy = _u.GetSystemMetrics(76), _u.GetSystemMetrics(77)
+        _vw, _vh = _u.GetSystemMetrics(78), _u.GetSystemMetrics(79)
+        if x < _vx or y < _vy or x + w > _vx + _vw or y + h > _vy + _vh:
+            print(f"  ✗✗✗ 游戏窗口超出屏幕：({x},{y}) {w}×{h}，屏幕 "
+            f"{_vx},{_vy} {_vw}×{_vh}")
+            print("      → 露在屏幕外的那一截**抓不到**：连携提示/血条/闪避全会失效")
+            print("      → 请把游戏改成**全屏**或**无边框**，或缩小到屏幕内再跑")
+    except Exception:
+        pass
     print(f"终末地窗口 ({x},{y}) {w}×{h}")
     # ★★ **画面区**（去掉上下黑边）必须最先算好 —— 眼睛裁切、小地图、HUD 遮罩
     #   全都依赖它。

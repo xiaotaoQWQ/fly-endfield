@@ -74,7 +74,24 @@ def grab(x, y, w, h):
 
 
 def find_endfield():
+    """找终末地窗口 —— 返回**最像游戏**的那一个。
+
+    ★★ 2026-11-01 修：原来直接 res[0]，只要标题里含 "endfield" 就可能是
+      「fly-endfield - 文件资源管理器」这种窗口。实测抓错过一次：
+      拿到一个 1901×930 @ (2860,363) 的窗口 —— **比显示器还宽**，
+      右边一半在屏幕外，于是连携提示区（x≈3900）根本抓不到 →
+      E 永不触发、血条也读不到（日志里 血=—）。
+
+    现在的选择规则：
+      ① 先排除明显不是游戏的窗口类（资源管理器 / 浏览器 / 应用框架窗）
+      ② 优先**完整落在屏幕内**的窗口
+      ③ 剩下取**面积最大**的（游戏窗口通常最大）
+    返回值仍是 (hwnd, x, y, w, h)，调用方不用改。
+    """
     res = []
+    BAD_CLASS = ("CabinetWClass", "Chrome_WidgetWin_1", "ApplicationFrameWindow",
+                 "Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Progman",
+                 "Windows.UI.Core.CoreWindow")
 
     @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
     def cb(hw, lp):
@@ -85,11 +102,30 @@ def find_endfield():
             if "endfield" in b.value.lower():
                 r = wintypes.RECT()
                 user32.GetWindowRect(hw, ctypes.byref(r))
-                res.append((hw, r.left, r.top, r.right - r.left, r.bottom - r.top))
+                cls = ctypes.create_unicode_buffer(256)
+                user32.GetClassNameW(hw, cls, 256)
+                res.append((hw, r.left, r.top, r.right - r.left,
+                            r.bottom - r.top, b.value, cls.value))
         return True
 
     user32.EnumWindows(cb, 0)
-    return res[0] if res else None
+    if not res:
+        return None
+    vx = user32.GetSystemMetrics(76)
+    vy = user32.GetSystemMetrics(77)
+    vw = user32.GetSystemMetrics(78)
+    vh = user32.GetSystemMetrics(79)
+
+    def _on_screen(r):
+        _, x, y, w, h = r[:5]
+        return (x >= vx and y >= vy and x + w <= vx + vw and y + h <= vy + vh)
+
+    good = [r for r in res if r[6] not in BAD_CLASS] or res
+    inside = [r for r in good if _on_screen(r)]
+    pool = inside or good
+    pool.sort(key=lambda r: r[3] * r[4], reverse=True)
+    return pool[0][:5]
+
 
 
 def crop_minimap(img):
