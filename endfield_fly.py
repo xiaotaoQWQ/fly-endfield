@@ -260,6 +260,11 @@ def main():
                          "平衡，否则 h 会钉死在 0、节律消失（实测踩过）")
     ap.add_argument("--hunger-eat", type=float, default=0.35,
                     help="每次进食降多少饥饿值（默认 0.35）")
+    # ★★ 2026-11-01：危机合约是**纯战斗场景** —— 进去就在打，不用判副本内外/红环。
+    #   开了这个门，攻击/闪避/连携/战斗解码全部常开；
+    #   但「打死」判定仍用**真实**的 m_on（否则永远检测不到战斗结束、拿不到奖赏）。
+    ap.add_argument("--always-combat", action="store_true",
+                    help="始终认为在战斗中（危机合约/纯打怪）：跳过副本/红环判断，门全开")
     ap.add_argument("--evac", action="store_true",
                     help="★ 用左上角**「撤离」面板**判定副本内，取代红叉当战斗闸门。"
                          "红叉只在打起来之后才亮，撤离按钮是副本的常驻 UI")
@@ -1819,7 +1824,9 @@ def main():
                 #   · 大世界 → 打起来了（红叉亮）才出手
                 #   这样全流程都能跑：大世界遭遇战、副本清怪，同一套回路。
                 #   想彻底不设闸门就加 --forage-always-attack。
-                m_on = m_evac or m_red
+                m_on_raw = m_evac or m_red      # 真实判定（打死/结算要用它）
+                # ★ 纯战斗场景：门直接常开（--always-combat）
+                m_on = True if args.always_combat else m_on_raw
                 # ★ 把判定结果存进 forager，让状态面板能显示 —— 这两个变量是
                 #   循环局部的，状态回调在别的线程里读不到，必须显式传出去。
                 if forager is not None:
@@ -2613,7 +2620,7 @@ def main():
                             _vl = grab(x + _VL[0], y + _VL[1], _VL[2], _VL[3])
                         if _vr is None:
                             _vr = grab(x + _VR[0], y + _VR[1], _VR[2], _VR[3])
-                        _o = outcome.step(ts, bool(m_on), bool(f_atk),
+                        _o = outcome.step(ts, bool(m_on_raw), bool(f_atk),
                                           hp_img=_hp, vig_left=_vl, vig_right=_vr)
                         fod["auto_hp"] = _o["hp"]
                         fod["auto_vig"] = _o["vig"]
