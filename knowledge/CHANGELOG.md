@@ -14,6 +14,30 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-11-01 · 更正：默认**不**自动开跑（点「启动」才跑）
+
+**为什么**：我把用户的话理解反了。用户的意思是：
+**打开程序只弹后台界面，点「启动」才开始控制果蝇** —— 这就是想要的行为，
+不是我上一版做的「开窗即开跑」。
+
+**改哪**：
+- `start_cc.cmd` 去掉 `--auto-start`（保留手动启动；`--auto-start` 参数仍在，想自动的可以自己加）
+- 顺手修一个真 bug：`cc_status` 只在 `if args.tune or args.panel:` 里初始化，
+  纯命令行模式（不带 panel）跑到主循环会 `UnboundLocalError` —— 现在提到 CTL 之后统一初始化
+- 顺手修顺序 bug：`--cc-debug → args.panel = True` 原来写在 CTL **之后**，
+  导致第一次 `CTL["running"]` 已经按 `not panel = True` 算好了 —— 于是**打开就自动跑了一轮**。
+  现在挪到 CTL 之前（实测：不带 --auto-start 时只打印配置、然后停在「等启动」）
+
+**怎么验**：
+```bash
+python -u -X utf8 endfield_fly.py --cc-debug --dry --seconds 2 --forage
+# 期望：弹窗 → 停住等启动（**没有** [轮次] 输出）
+python -u -X utf8 endfield_fly.py --cc-debug --auto-start --dry --seconds 2 --forage
+# 期望：直接跑一轮 → [轮次] 循环退出
+```
+
+---
+
 ## 2026-11-01 · `--auto-start`：启动即开跑，一轮结束自动再来一轮
 
 **为什么**：用户反馈「启动后只是弹出后台界面，不会启动果蝇控制，得点启动才行」。

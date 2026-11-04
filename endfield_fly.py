@@ -742,18 +742,22 @@ def main():
                 import traceback
                 print(f"    [poll] 出错: {type(_e).__name__}: {_e}", flush=True)
                 traceback.print_exc()
-
-    CTL = {"running": (not args.panel) or bool(args.auto_start),
-           "pause": False, "stop": False,
-           "load_slot": None, "reset_mem": False}
-    _pause_logged = [False]        # 暂停提示只打一次（用列表当可变闭包）
-    _ov_hidden = [False]           # 叠加面板当前是不是被藏起来了
     _ov_err = [0]                  # 叠加面板更新失败次数（只报前几次）
     # ★★ 2026-11-01：--cc-debug = 打开**本地窗口**（不是网页）。
     #   必须放在 `if args.tune or args.panel:` 之前 —— 否则 panel 还没置位，
     #   那段代码根本不会执行（第一版就踩了这个：加了参数却什么都不发生）。
     if getattr(args, "cc_debug", False):
         args.panel = True
+
+
+    CTL = {"running": (not args.panel) or bool(args.auto_start),
+           "pause": False, "stop": False,
+           "load_slot": None, "reset_mem": False}
+    # ★ 危机合约调试台的状态缓存：**必须在 panel 判断之前初始化**，
+    #   否则纯命令行模式跑到主循环会 UnboundLocalError（踩过）。
+    cc_status = None
+    _pause_logged = [False]        # 暂停提示只打一次（用列表当可变闭包）
+    _ov_hidden = [False]           # 叠加面板当前是不是被藏起来了
     if args.tune or args.panel:
         from live_tune import start_tuner, make_status_html, LogTap
         _log = LogTap(keep=80).install()
