@@ -500,16 +500,12 @@ class FlyPanel:
         # ★★ 2026-11-01：战斗条 + 觅食条**并排**（--overlay-strip-row）
         _Sy = max(self.c_h, self.f_h) if self.strip_row else (self.c_h + self.f_h)
         if self.strip_row:
+            # ★ 半宽紧凑版：重排成 900 宽，字保持原大小、字段一个不少
+            _half = self.w // 2
             if combat_on and self.c_h:
-                _ci = Image.new("RGBA", (self.w, self.c_h), (0, 0, 0, 0))
-                self._combat(ImageDraw.Draw(_ci), 0, st)
-                _ci = _ci.resize((self.w // 2, self.c_h), Image.LANCZOS)
-                img.alpha_composite(_ci, (0, self.h))
+                self._combat_compact(d, 0, self.h, _half, st)
             if forage_on and self.f_h:
-                _fi = Image.new("RGBA", (self.w, self.f_h), (0, 0, 0, 0))
-                self._forage(ImageDraw.Draw(_fi), 0, st)
-                _fi = _fi.resize((self.w // 2, self.f_h), Image.LANCZOS)
-                img.alpha_composite(_fi, (self.w // 2, self.h))
+                self._forage_compact(d, _half, self.h, _half, st)
         else:
             if combat_on and self.c_h:
                 self._combat(d, self.h, st)
@@ -731,6 +727,170 @@ class FlyPanel:
                    font=self.f_tiny, fill=FAINT)
 
     # ------------------------------------------------------------------
+    # ------------------------------------------------ 半宽紧凑版（并排用）
+    def _bar(self, d, x, y, w, h, frac, col, bg=(34, 34, 40)):
+        """小进度条（紧凑版共用）。"""
+        d.rectangle([x, y, x + w, y + h], fill=bg)
+        f = min(max(float(frac), 0.0), 1.0)
+        if f > 0:
+            d.rectangle([x, y, x + int(w * f), y + h], fill=col)
+
+    def _combat_compact(self, d, x0: int, y0: int, w: int, st: dict):
+        """战斗归因条（半宽紧凑版，900×88）——字段一个不少。"""
+        d.rectangle([x0, y0, x0 + w - 1, y0 + COMBAT_H - 1], fill=(16, 12, 12))
+        yy = y0 + 5
+        # --- 第 1 行：模式 / 战斗标记 / 三种计数 ---
+        d.text((x0 + 8, yy), "战斗模式", font=self.f_lab, fill=FG)
+        d.ellipse([x0 + 66, yy + 3, x0 + 74, yy + 11], fill=OK)
+        d.text((x0 + 78, yy - 1), "ON", font=self.f_lab, fill=OK)
+        if st.get("cm_mark"):
+            d.rectangle([x0 + 108, yy - 1, x0 + 168, yy + 14], fill=HOT)
+            d.text((x0 + 112, yy), "★战斗中", font=self.f_tiny, fill=(12, 8, 8))
+            d.text((x0 + 174, yy), f"×{float(st.get('cm_urge') or 1):.2f}",
+                   font=self.f_tiny, fill=HOT)
+        else:
+            _rp = st.get("cm_red_px")
+            d.text((x0 + 108, yy),
+                   "无战斗标记" + (f"（红 {_rp}）" if _rp is not None else ""),
+                   font=self.f_tiny, fill=FAINT)
+        cnt = st.get("cm_cnt") or {}
+        d.text((x0 + 230, yy), f"果蝇 {cnt.get('fly', 0)}", font=self.f_tiny, fill=OK)
+        d.text((x0 + 300, yy), f"冷却 {cnt.get('cooldown', 0)}", font=self.f_tiny, fill=WARM)
+        d.text((x0 + 370, yy), f"脚本 {cnt.get('script', 0)}", font=self.f_tiny, fill=FAINT)
+
+        # --- 第 2/3 行：两条通道 ---
+        for i, (lab, zk, dk, sk, hit, col) in enumerate((
+                ("攻击▸左键", "cm_z_a", "cm_der_a", "cm_src_a", st.get("cm_atk"), HOT),
+                ("技能▸逼近", "cm_z_s", "cm_der_s", "cm_src_s", st.get("cm_skl"), ACCENT))):
+            y = yy + 20 + i * 24
+            z = float(st.get(zk) or 0.0)
+            der = float(st.get(dk) or 0.0)
+            d.text((x0 + 8, y), lab, font=self.f_tiny, fill=col if hit else DIM)
+            _lx = x0 + 8 + int(d.textlength(lab, font=self.f_tiny)) + 8
+            if hit:
+                d.rectangle([_lx, y - 1, _lx + 30, y + 13], fill=col, outline=FG)
+                d.text((_lx + 4, y), "按下", font=self.f_tiny, fill=(10, 10, 10))
+            _lx += 36
+            d.text((_lx, y), f"{z:+5.2f}", font=self.f_mono,
+                   fill=col if z > 1.0 else FAINT)
+            _bx = _lx + 44
+            self._bar(d, _bx, y + 1, 104, 11, (z + 3.0) / 6.0,
+                      col if z > 1.0 else (70, 74, 86))
+            _tx = _bx + int(104 * ((1.0 + 3.0) / 6.0))
+            d.line([_tx, y - 2, _tx, y + 14], fill=FG, width=1)
+            _dx = _bx + 112
+            d.text((_dx, y), f"{der:+.5f}/s", font=self.f_tiny, fill=DIM)
+            src = st.get(sk) or "-"
+            d.text((_dx + 82, y),
+                   {"fly": "← 果蝇", "cooldown": "← 冷却拦",
+                    "sustain": "← 持续", "hold": "← 持续中"}.get(src, ""),
+                   font=self.f_tiny,
+                   fill=OK if src == "fly" else (
+                       WARM if src in ("cooldown", "sustain") else FAINT))
+    def _forage_compact(self, d, x0: int, y0: int, w: int, st: dict):
+        """觅食闭环条（半宽紧凑版，900×84）——字段一个不少。"""
+        d.rectangle([x0, y0, x0 + w - 1, y0 + FORAGE_H - 1], fill=(14, 18, 12))
+        yy = y0 + 5
+        d.text((x0 + 8, yy), "觅食", font=self.f_lab, fill=FG)
+        d.ellipse([x0 + 44, yy + 3, x0 + 52, yy + 11], fill=OK)
+        d.text((x0 + 56, yy - 1), "ON", font=self.f_tiny, fill=OK)
+        _hold = float(st.get("f_hold") or 0)
+        if _hold > 0:
+            d.text((x0 + 78, yy), f"吃饱{_hold:.1f}s", font=self.f_tiny,
+                   fill=(255, 226, 130))
+        if st.get("f_odor"):
+            d.rectangle([x0 + 146, yy - 1, x0 + 196, yy + 13], fill=ACCENT)
+            d.text((x0 + 150, yy), "气味", font=self.f_tiny, fill=(8, 12, 16))
+        else:
+            d.text((x0 + 146, yy), "无气味", font=self.f_tiny, fill=FAINT)
+        if st.get("f_evac"):
+            d.rectangle([x0 + 206, yy - 1, x0 + 250, yy + 13], fill=WARM)
+            d.text((x0 + 209, yy), "副本内", font=self.f_tiny, fill=(12, 8, 8))
+        else:
+            d.text((x0 + 206, yy), "副本外", font=self.f_tiny, fill=FAINT)
+        if st.get("f_onnx"):
+            _ms = float(st.get("f_onnx_ms") or 0)
+            _n = int(st.get("f_onnx_n") or 0)
+            d.text((x0 + 262, yy), f"ONNX {_n}框{_ms:.0f}ms", font=self.f_tiny,
+                   fill=(120, 220, 160))
+            _x = x0 + 384
+            if st.get("f_onnx_combo"):
+                d.text((_x, yy), "连携!", font=self.f_tiny, fill=(230, 160, 255))
+            else:
+                d.text((_x, yy), "连携-", font=self.f_tiny, fill=FAINT)
+            _x += 46
+            if st.get("f_onnx_end"):
+                d.text((_x, yy), "大招", font=self.f_tiny, fill=(255, 230, 120))
+            _x += 40
+            _nd = int(st.get("f_onnx_hp") or 0)
+            if _nd:
+                d.text((_x, yy), f"血危{_nd}", font=self.f_tiny, fill=(255, 140, 140))
+            _x += 56
+            d.text((_x, yy), f"连携{int(st.get('f_onnx_cf') or 0)}/4",
+                   font=self.f_tiny, fill=(150, 200, 255))
+            _x += 58
+            _raw = float(st.get("f_onnx_combo_raw") or 0)
+            if _raw > 0.10:
+                d.text((_x, yy), f"{_raw:.2f}", font=self.f_tiny,
+                       fill=((120, 220, 160) if _raw > 0.35 else (255, 200, 90)))
+            _x += 34
+            _dia = float(st.get("f_combo_dia_corr") or 0)
+            if _dia > 0.05:
+                d.text((_x, yy), ("菱★" if _dia >= 0.80 else f"菱{_dia:.2f}"),
+                       font=self.f_tiny,
+                       fill=((120, 220, 160) if _dia >= 0.80 else (255, 200, 90)))
+            _x += 44
+            _th = float(st.get("f_threat") or 0)
+            if _th > 0.10:
+                d.text((_x, yy), f"闪{_th:.2f}", font=self.f_tiny,
+                       fill=((255, 170, 120) if _th >= 0.35 else (200, 160, 120)))
+        else:
+            d.text((x0 + 262, yy), "ONNX 未启用", font=self.f_tiny, fill=FAINT)
+
+        y = yy + 22
+        h = float(st.get("f_hunger") or 0.0)
+        d.text((x0 + 8, y), "饥饿", font=self.f_tiny, fill=DIM)
+        d.text((x0 + 42, y - 1), f"{h:.2f}", font=self.f_mono,
+               fill=HOT if h > 0.5 else DIM)
+        self._bar(d, x0 + 78, y + 1, 88, 10, h,
+                  HOT if h > 0.35 else (90, 96, 80), bg=(32, 34, 28))
+        urge = float(st.get("f_urge") or 0.0)
+        thr = float(st.get("f_thr") or 0.35)
+        atk = bool(st.get("f_attack"))
+        d.text((x0 + 184, y), "驱动", font=self.f_tiny, fill=DIM)
+        d.text((x0 + 218, y - 1), f"{urge:.3f}", font=self.f_mono,
+               fill=HOT if atk else DIM)
+        self._bar(d, x0 + 258, y + 1, 96, 10, urge,
+                  HOT if atk else (80, 90, 76), bg=(32, 34, 28))
+        _tx = x0 + 258 + int(96 * min(max(thr, 0), 1))
+        d.line([_tx, y - 2, _tx, y + 13], fill=FG, width=1)
+        d.text((x0 + 362, y), f"阈值 {thr:.2f}", font=self.f_tiny, fill=DIM)
+        if atk:
+            d.rectangle([x0 + 424, y - 1, x0 + 464, y + 12], fill=HOT)
+            d.text((x0 + 428, y), "进食", font=self.f_tiny, fill=(12, 8, 8))
+
+        y = yy + 42
+        d.text((x0 + 8, y),
+               f"奖赏 {st.get('f_reward', 0)}   惩罚 {st.get('f_punish', 0)}",
+               font=self.f_tiny, fill=OK)
+        d.text((x0 + 150, y),
+               f"漂移 {float(st.get('f_drift') or 0):.0f}   "
+               f"MBON {float(st.get('f_mbon') or 0):+.3f}",
+               font=self.f_tiny, fill=WARM)
+        d.text((x0 + 340, y), f"通道 {st.get('f_ch', '')}", font=self.f_tiny, fill=FAINT)
+
+        y = yy + 60
+        if st.get("f_auto"):
+            hp = st.get("f_hp")
+            vg = st.get("f_vig")
+            hps = f"{hp * 100:.0f}%" if isinstance(hp, float) and hp == hp else "—"
+            vgs = f"{vg:+.0f}" if isinstance(vg, float) and vg == vg else "—"
+            d.text((x0 + 8, y), f"★全自动  血条 {hps}  受击红晕 {vgs}",
+                   font=self.f_tiny, fill=OK)
+        else:
+            d.text((x0 + 8, y), "自动奖惩未开（加 --auto-outcome）",
+                   font=self.f_tiny, fill=FAINT)
+        d.text((x0 + 300, y), "饿就上，饱就停", font=self.f_tiny, fill=FAINT)
     def _combat(self, d, y0: int, st: dict):
         """战斗归因（交接文档 §八）。
 

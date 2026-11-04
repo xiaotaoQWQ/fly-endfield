@@ -1,0 +1,28 @@
+        for i, (lab, zk, dk, sk, hit, col) in enumerate((
+                ("攻击▸左键", "cm_z_a", "cm_der_a", "cm_src_a", st.get("cm_atk"), HOT),
+                ("技能▸逼近", "cm_z_s", "cm_der_s", "cm_src_s", st.get("cm_skl"), ACCENT))):
+            y = yy + 20 + i * 24
+            z = float(st.get(zk) or 0.0)
+            der = float(st.get(dk) or 0.0)
+            d.text((x0 + 8, y), lab, font=self.f_tiny, fill=col if hit else DIM)
+            _lx = x0 + 8 + int(d.textlength(lab, font=self.f_tiny)) + 8
+            if hit:
+                d.rectangle([_lx, y - 1, _lx + 30, y + 13], fill=col, outline=FG)
+                d.text((_lx + 4, y), "按下", font=self.f_tiny, fill=(10, 10, 10))
+            _lx += 36
+            d.text((_lx, y), f"{z:+5.2f}", font=self.f_mono,
+                   fill=col if z > 1.0 else FAINT)
+            _bx = _lx + 44
+            self._bar(d, _bx, y + 1, 104, 11, (z + 3.0) / 6.0,
+                      col if z > 1.0 else (70, 74, 86))
+            _tx = _bx + int(104 * ((1.0 + 3.0) / 6.0))
+            d.line([_tx, y - 2, _tx, y + 14], fill=FG, width=1)
+            _dx = _bx + 112
+            d.text((_dx, y), f"{der:+.5f}/s", font=self.f_tiny, fill=DIM)
+            src = st.get(sk) or "-"
+            d.text((_dx + 82, y),
+                   {"fly": "← 果蝇", "cooldown": "← 冷却拦",
+                    "sustain": "← 持续", "hold": "← 持续中"}.get(src, ""),
+                   font=self.f_tiny,
+                   fill=OK if src == "fly" else (
+                       WARM if src in ("cooldown", "sustain") else FAINT))
