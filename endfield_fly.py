@@ -285,10 +285,10 @@ def main():
                     help="调参面板端口（默认 8791）")
     # ★★ 2026-11-01：危机合约专用调试台（独立网页，冷却全部可调到 0）
     ap.add_argument("--cc-debug", action="store_true",
-                    help="开「危机合约调试台」：所有冷却可调到 0、一键归零、实时状态"
-                         "（默认关；开了之后浏览器打开 http://127.0.0.1:9121）")
-    ap.add_argument("--cc-port", type=int, default=9121,
-                    help="危机合约调试台的端口（默认 9121）")
+                    help="打开「危机合约调试窗口」（本地 tkinter 面板，不是网页）："
+                         "所有冷却可拖到 0、一键归零、闪避开/关")
+    ap.add_argument("--cc-web", action="store_true",
+                    help="【旧】上网页面板（默认关 —— 现在用本地窗口就够了）")
     # ★ 闪避：Shift 点一下。体力有限、只能连放 2 次，所以必须有冷却。
     ap.add_argument("--dodge", action="store_true", default=True,
                     help="威胁出现时自动闪避（默认开）")
@@ -743,6 +743,11 @@ def main():
     _pause_logged = [False]        # 暂停提示只打一次（用列表当可变闭包）
     _ov_hidden = [False]           # 叠加面板当前是不是被藏起来了
     _ov_err = [0]                  # 叠加面板更新失败次数（只报前几次）
+    # ★★ 2026-11-01：--cc-debug = 打开**本地窗口**（不是网页）。
+    #   必须放在 `if args.tune or args.panel:` 之前 —— 否则 panel 还没置位，
+    #   那段代码根本不会执行（第一版就踩了这个：加了参数却什么都不发生）。
+    if getattr(args, "cc_debug", False):
+        args.panel = True
     if args.tune or args.panel:
         from live_tune import start_tuner, make_status_html, LogTap
         _log = LogTap(keep=80).install()
@@ -886,12 +891,15 @@ def main():
                                  sync_hooks=[_tune_sync],
                                  ctl=CTL, game_fn=_game_check, mem=_MEM)
 
-    cc_status = None
-    if args.cc_debug:
-        from live_tune_cc import start_cc_debug
-        cc_status = {}
-        start_cc_debug(args, port=args.cc_port,
-                       status_fn=lambda: dict(cc_status))
+        cc_status = None
+        if args.cc_debug:
+            # ★ 2026-11-01：改成本地窗口（tkinter 应用窗口），不再开网页。
+            #   危机合约块已经内置在 app_window 的参数区最上面。
+            args.panel = True
+        if args.cc_web:
+            from live_tune_cc import start_cc_debug
+            cc_status = {}
+            start_cc_debug(args, port=9121, status_fn=lambda: dict(cc_status))
         # ★ 真·应用程序窗口（tkinter）。HTTP 服务保留在旁边 ——
         #   本地用窗口，手机/另一台机器用网页，两边读的是同一份状态。
         if args.panel:

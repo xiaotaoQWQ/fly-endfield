@@ -67,6 +67,7 @@ class AppWindow:
         #   界面**不直接动蘑菇体权重** —— 只发请求，主循环在自己的节拍上执行。
         self.mem = mem or {}
         self.mem_btns = {}
+        self.cc_rows = {}          # 危机合约滑条 (scale, 值标签, step, isint, lo, hi)
         self._slot_taken = {}
         self.rows = {}
         self.toggle_rows = {}
@@ -252,6 +253,92 @@ class AppWindow:
         self.logbox.pack(fill="both", expand=True, pady=(4, 0))
         self.logbox.configure(state="disabled")
 
+    # ------------------------------------------------------------ 危机合约
+    def _build_cc(self, inner):
+        """危机合约专用参数块（本地窗口版）。
+
+        ★ 原版 GROUPS 是按日常跑图标定的（技能间隔下限 0.5s、大招冷却下限 5s）。
+          合约要压满输出，所以**所有冷却都必须能拖到 0**。
+        ★ 数据源和 live_tune_cc.PARAMS 是同一份，网页版/窗口版不会不同步。
+        """
+        try:
+            from live_tune_cc import PARAMS, ZERO_KEYS
+        except Exception as e:
+            tk.Label(inner, text=f"危机合约块加载失败：{e}", bg=BG, fg=BAD,
+                     anchor="w", font=("Microsoft YaHei UI", 9)).pack(fill="x")
+            return
+
+        g = tk.LabelFrame(inner, text=" 危机合约 · 专用（冷却可设 0） ", bg=BG,
+                          fg="#ff9f5a", font=("Microsoft YaHei UI", 9, "bold"),
+                          bd=1, relief="groove", labelanchor="nw")
+        g.pack(fill="x", padx=2, pady=(2, 10))
+
+        bar = tk.Frame(g, bg=BG)
+        bar.pack(fill="x", padx=8, pady=(6, 2))
+
+        def _btn(text, fg, bgc, cmd):
+            b = tk.Button(bar, text=text, command=cmd, bg=bgc, fg=fg,
+                          activebackground="#243044", activeforeground=fg,
+                          relief="flat", padx=12, pady=4, cursor="hand2",
+                          font=("Microsoft YaHei UI", 9, "bold"))
+            b.pack(side="left", padx=(0, 8))
+            return b
+
+        _btn("全部冷却归零", "#b9ffcf", "#1d3b2a", self._cc_zero)
+        self.b_cc_dodge = _btn("闪避：开", "#cfe3ff", "#22303f", self._cc_dodge)
+        tk.Label(bar, text="拖到 0 立刻生效，不用重启", bg=BG, fg=DIM,
+                 font=("Microsoft YaHei UI", 8)).pack(side="left", padx=(6, 0))
+
+        for spec in PARAMS:
+            k, lab, lo, hi, step, isint, hint = spec
+            row = tk.Frame(g, bg=BG)
+            row.pack(fill="x", padx=8, pady=(2, 0))
+            tk.Label(row, text=lab, bg=BG, fg=FG, width=17, anchor="w",
+                     font=("Microsoft YaHei UI", 9)).pack(side="left")
+            cur = float(getattr(self.args, k, lo) or 0.0)
+            val = tk.Label(row, text=f"{cur:.{self._dec(step)}f}", bg=BG,
+                           fg="#7fe3a8", width=6, anchor="e",
+                           font=("Consolas", 9))
+            val.pack(side="right")
+            sc = ttk.Scale(row, from_=lo, to=hi, value=cur,
+                           orient="horizontal",
+                           command=lambda v, kk=k, lv=val, st=step, ii=isint:
+                                   self._cc_slide(kk, v, lv, st, ii))
+            sc.pack(side="left", fill="x", expand=True, padx=6)
+            self.cc_rows[k] = (sc, val, step, isint, lo, hi)
+
+    def _cc_slide(self, key, value, label, step=0.1, isint=0):
+        v = float(value)
+        if isint:
+            v = float(int(round(v)))
+        label.config(text=f"{v:.{self._dec(step)}f}")
+        setattr(self.args, key, int(v) if isint else v)
+        for h in self.tune.get("hooks", []):
+            try:
+                h()
+            except Exception:
+                pass
+
+    def _cc_zero(self):
+        """一键把 7 个冷却全部设为 0，并同步滑条显示。"""
+        try:
+            from live_tune_cc import ZERO_KEYS
+        except Exception:
+            return
+        for k in ZERO_KEYS:
+            setattr(self.args, k, 0)
+            if k in self.cc_rows:
+                sc, val, step, isint, lo, hi = self.cc_rows[k]
+                sc.set(0)
+                val.config(text=f"{0.0:.{self._dec(step)}f}")
+        self._flash("已把所有冷却设为 0（连携/闪避/技能/大招/奖赏/惩罚/兜底）", OK)
+
+    def _cc_dodge(self):
+        was_off = bool(getattr(self.args, "no_dodge", False))
+        self.args.no_dodge = not was_off
+        self.b_cc_dodge.config(text="闪避：开" if was_off else "闪避：关")
+        self._flash("闪避已开" if was_off else "闪避已关（省体力）", OK)
+
     def _build_params(self, parent):
         """按 GROUPS 生成滑块。数据源和网页版是同一份，不会不同步。"""
         canvas = tk.Canvas(parent, bg=BG, highlightthickness=0)
@@ -265,6 +352,9 @@ class AppWindow:
         sb.pack(side="right", fill="y")
         canvas.bind_all("<MouseWheel>",
                         lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+
+        # ★★ 危机合约专用块放最前面（2026-11-01）：所有冷却可拖到 0
+        self._build_cc(inner)
 
         # ★ 对照组（消融实验）放最前面 —— 它比调参重要：
         #   调参是调多少合适，对照组是这个部件到底在不在起作用。

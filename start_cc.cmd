@@ -7,8 +7,8 @@ REM ============================================================
 REM  Crisis Contract (危机合约) launcher  -- run as Administrator
 REM
 REM  Same engine as test_combat.cmd, plus:
-REM    - 危机合约调试台  http://127.0.0.1:9121
-REM      所有冷却可调到 0 / 一键归零 / 实时状态（连携成-败、闪避三路、挨打、血量）
+REM    - 危机合约调试窗口（本地 tkinter，不是网页）
+REM      所有冷却可拖到 0 / 一键全部归零 / 闪避开-关 / 实时状态
 REM    - cooldowns preset to 0 for max output
 REM
 REM  Keys: HOME = player takeover,  9 = combat mode toggle
@@ -31,7 +31,7 @@ echo.
 if not exist out mkdir out
 del /q out\cc_run.log 2>nul
 
-echo   危机合约调试台: http://127.0.0.1:9121
+echo   会弹出「果蝇全脑驾驶终末地」窗口：参数区最上面就是「危机合约 · 专用」
 echo   叠加面板: HOME = 玩家接管 / 9 = 战斗模式
 echo.
 
@@ -40,8 +40,7 @@ python -u -X utf8 endfield_fly.py ^
     --motor pop ^
     --eye main --eye-hz 30 ^
     --overlay ^
-    --tune --tune-port 9120 ^
-    --cc-debug --cc-port 9121 ^
+    --cc-debug ^
     --forage --evac --auto-outcome --combo --skill-auto --ult ^
     --combo-hunger 0.0 --combo-cool 0 --combo-cool-full 0 --dodge-cool 0.6 ^
     --attack-hold 1.0 ^
@@ -52,6 +51,6 @@ python -u -X utf8 endfield_fly.py ^
 
 echo.
 echo   Done. Log: out\cc_run.log
-echo   Debug page was: http://127.0.0.1:9121
+echo   Debug window was: the app window (危机合约 block on top)
 echo.
 pause

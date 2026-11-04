@@ -14,6 +14,37 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-11-01 · 危机合约调试台改成「本地窗口」（不是网页）
+
+**为什么**：用户要「本地 exe，不要网页版」。查知识库 05：本项目的**主界面**一直是
+`app_window.py` 的 tkinter 应用窗口（HTTP 面板只是给手机/远程看的附赠）。
+所以危机合约参数应该长在那个窗口里，打包 exe 时天然带着。
+
+**改哪**：
+- `app_window.py`：新增 `_build_cc()`，在**参数区最上面**插一个「危机合约 · 专用」区块：
+  · 19 个滑条（数据源 = `live_tune_cc.PARAMS`，冷却下限全 0）
+  · 两个按钮：**全部冷却归零** / **闪避：开⇄关**
+  · 拖到 0 立刻写回 `args`，不用重启
+- `endfield_fly.py`：`--cc-debug` 现在是**打开本地窗口**（置 `args.panel = True`），
+  旧的网页版退到 `--cc-web`（默认关）；`--cc-port` 移除
+- `start_cc.cmd`：改用 `--cc-debug`（不再传端口），注释同步
+
+**怎么验**：
+```bash
+start_cc.cmd          # 弹出的窗口里，参数区最上面就是「危机合约 · 专用」
+```
+离线单测（不弹窗，建完就销毁）：19 个滑条全部创建 ✓、
+点「全部冷却归零」后 combo_cool/skill_interval/ult_cool 都变 0 ✓、
+「闪避开⇄关」按钮文字和 no_dodge 同步 ✓。
+
+**两个坑**：
+1. `args.panel = True` 必须放在 `if args.tune or args.panel:` **之前** ——
+   第一版放在里面，结果 `--cc-debug` 什么都不发生（那段代码压根没执行）。
+2. 打包不用改 `build_exe.py`：它是**从入口做 import 传递闭包**的，
+   `app_window` 里函数内的 `from live_tune_cc import ...` 也能扫到（实测 30 个模块里含 live_tune_cc）。
+
+---
+
 ## 2026-11-01 · 危机合约专用调试台（live_tune_cc.py）+ start_cc.cmd
 
 **为什么**：原版 `live_tune.py` 的参数范围是按「日常跑图」标定的 ——
