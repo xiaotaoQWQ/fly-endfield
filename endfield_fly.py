@@ -161,6 +161,11 @@ def main():
                     help="显示实时可视化叠加（全脑活动 + 朝向 + 动作 + 轨迹）")
     ap.add_argument("--overlay-x", type=int, default=380)
     ap.add_argument("--overlay-y", type=int, default=0)
+    # ★★ 2026-11-01：叠加面板整体缩放。面板太大会**压住连携提示区域**
+    #   （提示在内容坐标 x1490~1630, y500~630）—— 压住了抓屏就看不到，E 自然不按。
+    ap.add_argument("--overlay-scale", type=float, default=1.0,
+                    help="叠加面板缩放（0.4~1.0，默认 1.0）。危机合约建议 0.6~0.7"
+                         "并把 --overlay-x 设 0，避免压住连携提示区")
     ap.add_argument("--overlay-every", type=int, default=1,
                     help="每 N 拍刷新一次叠加（渲染约 60-100ms，太勤会拖慢闭环）")
     ap.add_argument("--dry", action="store_true", help="只决策不按键")
@@ -1350,10 +1355,18 @@ def main():
         from overlay import Overlay
         # ★ 高度取 **最大**（含战斗条）：Overlay.update() 尺寸不符会抛异常，
         #   而运行时按 0 切战斗模式会改变面板高度。战斗关闭时底部保持透明。
-        ov = Overlay(panel.w, panel.h + panel.extra_h,
-                     x=args.overlay_x, y=args.overlay_y)
+        _ov_w = max(200, int(round(panel.w * args.overlay_scale)))
+        _ov_h = max(120, int(round((panel.h + panel.extra_h) * args.overlay_scale)))
+        ov = Overlay(_ov_w, _ov_h, x=args.overlay_x, y=args.overlay_y)
         ov.pump()
-        print(f"叠加面板 {panel.w}×{panel.h + panel.extra_h} @ "
+
+        def _ov_fit(img):
+            # 把渲染好的面板缩到叠加窗口的尺寸（--overlay-scale）
+            if abs(args.overlay_scale - 1.0) < 1e-3:
+                return img
+            from PIL import Image as _Im
+            return np.asarray(_Im.fromarray(img).resize((_ov_w, _ov_h), _Im.LANCZOS))
+        print(f"叠加面板 {_ov_w}×{_ov_h} @ "
               f"({args.overlay_x},{args.overlay_y})  hwnd={ov.hwnd}"
               f"（底部预留 {panel.extra_h}px：{' + '.join(panel.strips) or '无'}）")
 
@@ -2963,7 +2976,7 @@ def main():
                     #   用户看到的就是「点了启动没反应」（窗口一闪没了）。
                     #   这只果蝇的正事是开车，画不出面板不该让它停摆。
                     try:
-                        ov.update(panel.render(dict(
+                        ov.update(_ov_fit(panel.render(dict(
                             r=r, heading=heading, direction=direction,
                             margin=float(o["margin"]), speed=float(od["speed"]),
                             drive=float(drive[rm._pr_idx].mean()),
@@ -3010,7 +3023,7 @@ def main():
                             in_sectors=in_sectors, sector_wins=sector_wins,
                             out_chans=out_chans,
                             dist=float(np.hypot(odo.x, odo.y)),
-                            yaw=0.0, pitch=0.30)))
+                            yaw=0.0, pitch=0.30))))
                     except Exception as _ov_e:
                         _ov_err[0] += 1
                         if _ov_err[0] <= 3:

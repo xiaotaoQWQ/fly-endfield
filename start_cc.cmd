@@ -40,7 +40,7 @@ python -u -X utf8 endfield_fly.py ^
     --hz 2.5 ^
     --motor pop ^
     --eye main --eye-hz 30 ^
-    --overlay ^
+    --overlay --overlay-scale 0.62 --overlay-x 0 --overlay-y 0 ^
     --cc-debug ^
     --forage --auto-outcome --combo --skill-auto --ult ^
     --always-combat --combat ^
