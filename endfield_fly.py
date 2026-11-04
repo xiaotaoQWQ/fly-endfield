@@ -404,6 +404,10 @@ def main():
     #   游戏本身有技能冷却，按得更快只是白按 + 日志刷屏（实测「后期疯狂按技能1」）。
     ap.add_argument("--skill-min-gap", type=float, default=0.8,
                     help="技能按压的最小间隔（秒，默认 0.8）")
+    # ★ 每个技能槽**各自的冷却**：刚按过的槽 N 秒内不再选（游戏里技能各有 CD）。
+    #   没有这条时，「只会按 SK1」是必然的 —— 主攻底盘最高，argmax 永远选它。
+    ap.add_argument("--skill-slot-cool", type=float, default=6.0,
+                    help="同一个技能槽的最短重复间隔（秒，默认 6.0）；四槽都冷却时这一拍不放技能")
     ap.add_argument("--forage-always-attack", action="store_true",
                     help="★ 默认**关**：红叉（进入战斗）是攻击的必要前提，"
                          "没进战斗不许挥刀。加上这个开关才允许它无条件出手")
@@ -2470,21 +2474,28 @@ def main():
                             #   蘑菇体的四个分区（DAN→MBON 投射聚出来的）给它做微调。
                             #   否则退回老行为：永远按 --skill-key。
                             _sk = None
+                            _slot = 0
                             if (ts - fod["last_skill"]
                                     >= max(float(args.skill_interval),
                                                 float(args.skill_min_gap))):
                                 if args.skill_auto:
                                     from mb_learn import select_skill
+                                    # ★ 先把「刚按过的槽」排除（--skill-slot-cool），四槽才会真正轮起来
+                                    _st = fod.setdefault("slot_t", {})
+                                    _blk = {_j + 1 for _j in range(4)
+                                           if ts - _st.get(_j + 1, -99.0)
+                                              < float(args.skill_slot_cool)}
                                     _slot = select_skill(
                                         _m.group_scores(r), fod["hg"].h,
                                         fod.get("auto_hp"),
                                         ts - fod["combat_t0"],
                                         heal_hp=args.heal_hp,
-                                        roles=_ROLES_TUPLE)
+                                        roles=_ROLES_TUPLE, blocked=_blk)
                                     # ★ 返回的是**槽号**（1..4），不是键 ——
                                     #   键由 --key-skillN 决定。这样哪个槽什么含义
                                     #   和按哪个键是两件独立可配的事。
-                                    _sk = _KEYMAP.get(_slot, args.skill_key)
+                                    # 0 = 四个槽都在冷却 → 这一拍不放技能
+                                    _sk = (_KEYMAP.get(_slot, args.skill_key) if _slot else None)
                                 elif fod["hg"].h >= args.skill_hunger:
                                     _sk = args.skill_key
                             if _sk is not None:
@@ -2492,6 +2503,8 @@ def main():
                                 pressed_keys.append(f"SK{_sk}")
                                 fod["last_skill"] = ts
                                 fod["n_skill"] += 1
+                                if _slot:
+                                    fod.setdefault("slot_t", {})[_slot] = ts
                                 if args.skill_auto:
                                     _gs = _m.group_scores(r)
                                     _hps = fod.get("auto_hp")

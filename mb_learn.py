@@ -413,10 +413,12 @@ def innate_priority(h: float, hp, combat_age: float,
             # ⚠ 第一版给的是 1.00/0.90（比主攻还低或持平）——结果主攻天生压过
             #   轮换，实测 31 次技能里 30 次都是主攻，轮换等于没发生。
             #   1.45 明显高于主攻上限（1.0 + 学习偏移 0.30 = 1.30）。
-            p[i] = 1.45 if early else 0.0
+            # ★ 2026-11-01：早期给决定权重，之后留一个**维持底盘** —— 否则早期窗口一过，
+            #   非主攻的槽全是 0，argmax 永远选主攻 → 实测「只会按 SK1」。
+            p[i] = 1.45 if early else 0.85
         elif role == "buff":
             # 增伤：早段放，之后交回主攻
-            p[i] = 1.45 if (early or midage) else 0.0
+            p[i] = 1.45 if (early or midage) else 0.80
         elif role == "block":
             p[i] = 1.55 if mid else 0.0
         elif role == "heal":
@@ -441,7 +443,7 @@ def innate_priority(h: float, hp, combat_age: float,
 
 def select_skill(gscores: np.ndarray, h: float, hp, combat_age: float,
                  learn_gain: float = 0.30, heal_hp: float = 0.5,
-                 roles=None) -> int:
+                 roles=None, blocked=None) -> int:
     """先天优先级 + 学习微调 → 选一个技能（返回 1..4）。
 
     `gscores` 是蘑菇体四个分区的输出（见 MushroomBodyLearner.group_scores）。
@@ -458,4 +460,12 @@ def select_skill(gscores: np.ndarray, h: float, hp, combat_age: float,
         g = np.nan_to_num(g, nan=0.0, posinf=0.0, neginf=0.0)
         spread = float(np.abs(g).mean()) + 1e-6
         p = p + learn_gain * np.tanh(g / (2.0 * spread))   # ★ 有界
+    # ★ 2026-11-01：被「槽位冷却」挡住的槽先排除 —— 游戏里每个技能各有冷却，
+    #   刚按过的那个再按是白按。全被挡住就返回 0（这一拍不放技能）。
+    if blocked:
+        for _b in blocked:
+            if 0 < int(_b) <= 4:
+                p[int(_b) - 1] = -1e9
+        if float(np.max(p)) <= -1e8:
+            return 0
     return int(np.argmax(p)) + 1
