@@ -1,0 +1,92 @@
+    # ------------------------------------------------------------ 极简条
+    def render_mini(self, st: dict) -> np.ndarray:
+        """极简条（1200×170）—— 信息一个不少，只是排得更密。"""
+        W, H = MINI_W, MINI_H
+        img = Image.new("RGBA", (W, H), (*BG, BG_A))
+        d = ImageDraw.Draw(img)
+        d.rectangle([0, 0, W, 1], fill=(40, 52, 70))
+
+        d.text((8, 3), "果蝇全脑", font=self.f_sub, fill=FG)
+        d.text((76, 4), f"{st.get('tick', 0)} 拍 · {st.get('exec', '')}",
+               font=self.f_tiny, fill=DIM)
+        run = bool(st.get("running", True))
+        d.ellipse([W - 92, 7, W - 84, 15], fill=OK if run else HOT)
+        d.text((W - 78, 4), "运行中" if run else "已停止",
+               font=self.f_tiny, fill=OK if run else HOT)
+
+        try:
+            brain = self.bv.render(np.asarray(st["r"], dtype=np.float32),
+                                   yaw=0.0, pitch=float(st.get("pitch", 0.30)),
+                                   zoom=float(st.get("zoom", 2.60)))
+            img.paste(Image.fromarray(brain).resize((190, 116), Image.BILINEAR), (6, 20))
+            d.rectangle([6, 20, 196, 136], outline=(48, 58, 76), width=1)
+        except Exception:
+            d.rectangle([6, 20, 196, 136], fill=(6, 8, 12))
+        d.text((8, 138), f"放电 {int(st.get('spikes', 0)):,}/拍", font=self.f_tiny, fill=DIM)
+        d.text((8, 150), f"累计 {int(st.get('steps_total', 0)):,} 步", font=self.f_tiny, fill=DIM)
+
+        x = 204
+        d.text((x, 22), f"朝向 {float(st.get('heading', 0)):5.1f}°", font=self.f_tiny, fill=FG)
+        d.text((x, 36), f"速度 {float(st.get('speed', 0)):6.2f} px/s", font=self.f_tiny, fill=FG)
+        d.text((x, 50), f"驱动 {float(st.get('drive', 0)):+.5f}", font=self.f_tiny, fill=ACCENT)
+        d.text((x, 64), f"位移 {float(st.get('dist', 0)):6.1f} px", font=self.f_tiny, fill=FG)
+        d.text((x, 78), f"方向 {st.get('direction', '-')}  卡 " + ("是" if st.get("stuck") else "否"), font=self.f_tiny, fill=WARM if st.get("stuck") else DIM)
+        d.text((x, 92), f"饥饿 {float(st.get('f_hunger', 0)):.2f}  阈值 {float(st.get('f_thr', 0)):.2f}", font=self.f_tiny, fill=FG)
+        d.text((x, 106), f"驱动力 {float(st.get('f_urge', 0)):.3f}  漂移 {float(st.get('f_drift', 0)):.1f}", font=self.f_tiny, fill=DIM)
+        d.text((x, 120), f"气味 {'有' if st.get('f_odor') else '无'}  出手 {'是' if st.get('f_attack') else '否'}", font=self.f_tiny, fill=DIM)
+        d.text((x, 134), f"战斗 {'是' if st.get('cm_mark') else '否'}  副本 {'是' if st.get('f_evac') else '否'}", font=self.f_tiny, fill=DIM)
+
+        x = 440
+        kx, ky = x, 24
+        for lab, k in (("W", "forward"), ("S", "back"), ("A", "left"), ("D", "right"),
+                       ("跳", "jump"), ("冲", "sprint")):
+            on = bool(st.get(k))
+            d.rounded_rectangle([kx, ky, kx + 34, ky + 18], radius=4,
+                                fill=OK if on else (28, 34, 46), outline=(60, 72, 92))
+            d.text((kx + 17, ky + 9), lab, font=self.f_tiny,
+                   fill=(10, 14, 20) if on else FG, anchor="mm")
+            kx += 38
+            if kx > x + 150:
+                kx, ky = x, ky + 22
+        d.text((x, 72), "本拍按键", font=self.f_tiny, fill=DIM)
+        kk = x + 60
+        for k in (st.get("f_keys") or [])[-5:]:
+            w = max(18, 7 * len(str(k)))
+            d.rounded_rectangle([kk, 70, kk + w, 86], radius=3,
+                                fill=(58, 30, 30), outline=(90, 50, 50))
+            d.text((kk + w / 2, 78), str(k), font=self.f_tiny, fill=WARM, anchor="mm")
+            kk += w + 3
+            if kk > x + 300:
+                break
+        c = st.get("counts") or {}
+        d.text((x, 92), f"左转 {c.get('left', 0)}  右转 {c.get('right', 0)}  跳 {c.get('jump', 0)}", font=self.f_tiny, fill=DIM)
+        d.text((x, 106), f"冲 {c.get('sprint', 0)}  撞墙 {c.get('esc', 0)}  卡住 {c.get('stuck', 0)}", font=self.f_tiny, fill=DIM)
+        d.text((x, 122), f"连携 成{st.get('f_combo_ok', 0)}/败{st.get('f_combo_ng', 0)}  闪避 纵{st.get('f_dg_c', 0)}/O{st.get('f_dg_o', 0)}/红{st.get('f_dg_f', 0)} 成{st.get('f_dg_ok', 0)}/败{st.get('f_dg_ng', 0)}", font=self.f_tiny, fill=ACCENT)
+        d.text((x, 136), f"挨打 {st.get('f_npunish', 0)}   打死 {st.get('f_nreward', 0)}   z {float(st.get('cm_z_s', 0)):+.2f}", font=self.f_tiny, fill=DIM)
+
+        x = 790
+        d.text((x, 22), "本拍指令", font=self.f_tiny, fill=DIM)
+        d.text((x + 58, 22), str(st.get("action", ""))[:60], font=self.f_log, fill=FG)
+        d.text((x, 40), "实时指令流", font=self.f_tiny, fill=DIM)
+        yy = 56
+        for e in (st.get("log") or [])[-4:]:
+            d.text((x, yy), f"{e.get('t', 0):6.1f}s {e.get('dir', '-')} {str(e.get('action', ''))[:44]}",
+                   font=self.f_tiny, fill=(150, 165, 190))
+            yy += 15
+
+        h = max(0.0, min(1.0, float(st.get("f_hunger", 0))))
+        d.rectangle([0, H - 4, W, H - 1], fill=(24, 28, 36))
+        d.rectangle([0, H - 4, int(W * h), H - 1],
+                    fill=HOT if h > 0.5 else (120, 130, 100))
+
+        if st.get("f_takeover"):
+            lay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            ld = ImageDraw.Draw(lay)
+            ld.rectangle([0, 0, W, H - 1], fill=(120, 16, 16, 120))
+            ld.text((W // 2, H // 2 - 12), "玩家接管中", font=self.f_mid,
+                    fill=(255, 244, 232, 238), anchor="mm")
+            ld.text((W // 2, H - 18),
+                    f"按 {st.get('f_takeover_key', 'HOME')} 键交还控制",
+                    font=self.f_val, fill=(255, 206, 160, 235), anchor="mm")
+            img.alpha_composite(lay, (0, 0))
+        return np.asarray(img)

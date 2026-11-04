@@ -169,6 +169,9 @@ def main():
     # ★ 精简版：底部那两条（战斗/觅食）平时很少看，去掉能矮 172px。
     ap.add_argument("--overlay-lite", action="store_true",
                     help="精简叠加面板：去掉底部战斗/觅食条，只留主区+接管条（更紧凑）")
+    # ★ 极简条：1200×170，信息一个不少（脑图+三列密排+日志），只是排得更密。
+    ap.add_argument("--overlay-mini", action="store_true",
+                    help="极简条叠加面板（1200×170，保留全部信息）")
     ap.add_argument("--overlay-every", type=int, default=1,
                     help="每 N 拍刷新一次叠加（渲染约 60-100ms，太勤会拖慢闭环）")
     ap.add_argument("--dry", action="store_true", help="只决策不按键")
@@ -1376,17 +1379,29 @@ def main():
         from overlay import Overlay
         # ★ 高度取 **最大**（含战斗条）：Overlay.update() 尺寸不符会抛异常，
         #   而运行时按 0 切战斗模式会改变面板高度。战斗关闭时底部保持透明。
-        _ov_w = max(200, int(round(panel.w * args.overlay_scale)))
-        _ov_h = max(120, int(round((panel.h + panel.extra_h) * args.overlay_scale)))
+        if args.overlay_mini:
+            from fly_panel import MINI_W, MINI_H
+            _ow, _oh = MINI_W, MINI_H
+        else:
+            _ow, _oh = panel.w, panel.h + panel.extra_h
+        _ov_w = max(200, int(round(_ow * args.overlay_scale)))
+        _ov_h = max(90, int(round(_oh * args.overlay_scale)))
         ov = Overlay(_ov_w, _ov_h, x=args.overlay_x, y=args.overlay_y)
         ov.pump()
+        print(f"叠加面板 {_ov_w}×{_ov_h} @ ({args.overlay_x},{args.overlay_y})"
+              f"  hwnd={ov.hwnd}"
+              + ("  [极简条]" if args.overlay_mini else ""))
 
-        def _ov_fit(img):
-            # 把渲染好的面板缩到叠加窗口的尺寸（--overlay-scale）
-            if abs(args.overlay_scale - 1.0) < 1e-3:
-                return img
-            from PIL import Image as _Im
-            return np.asarray(_Im.fromarray(img).resize((_ov_w, _ov_h), _Im.LANCZOS))
+    def _ov_fit(img):
+        # 把渲染好的面板缩到叠加窗口的尺寸（--overlay-scale）
+        if abs(args.overlay_scale - 1.0) < 1e-3:
+            return img
+        from PIL import Image as _Im
+        return np.asarray(_Im.fromarray(img).resize((_ov_w, _ov_h), _Im.LANCZOS))
+
+    def _ov_draw(st):
+        # 极简条 / 完整版 二选一（同一个 state，只是排版不同）
+        return panel.render_mini(st) if args.overlay_mini else panel.render(st)
         print(f"叠加面板 {_ov_w}×{_ov_h} @ "
               f"({args.overlay_x},{args.overlay_y})  hwnd={ov.hwnd}"
               f"（底部预留 {panel.extra_h}px：{' + '.join(panel.strips) or '无'}）")
@@ -2997,7 +3012,7 @@ def main():
                     #   用户看到的就是「点了启动没反应」（窗口一闪没了）。
                     #   这只果蝇的正事是开车，画不出面板不该让它停摆。
                     try:
-                        ov.update(_ov_fit(panel.render(dict(
+                        ov.update(_ov_fit(_ov_draw(dict(
                             r=r, heading=heading, direction=direction,
                             margin=float(o["margin"]), speed=float(od["speed"]),
                             drive=float(drive[rm._pr_idx].mean()),
@@ -3033,6 +3048,16 @@ def main():
                             f_drift=(forager['mb'].drift if forager else 0.0),
                             f_mbon=(forager['mbon_val'] if forager else 0.0),
                             f_ch=(forager['ch'] if forager else ''),
+                            f_combo_ok=(int(forager.get("n_combo_ok", 0)) if forager else 0),
+                            f_combo_ng=(int(forager.get("n_combo_fail", 0)) if forager else 0),
+                            f_dg_c=(int(forager.get("n_dodge_cortex", 0)) if forager else 0),
+                            f_dg_o=(int(forager.get("n_dodge_onnx", 0)) if forager else 0),
+                            f_dg_f=(int(forager.get("n_dodge_flash", 0)) if forager else 0),
+                            f_dg_ok=(int(forager.get("n_dodge_ok", 0)) if forager else 0),
+                            f_dg_ng=(int(forager.get("n_dodge_fail", 0)) if forager else 0),
+                            f_nreward=(int(forager.get("n_reward", 0)) if forager else 0),
+                            f_npunish=(int(forager.get("n_punish", 0)) if forager else 0),
+                            f_keys=list(pressed_keys[-10:]),
                             f_takeover=bool(takeover),
                             f_takeover_key=str(args.takeover_key).upper(),
                             cm_mark=bool(m_on), cm_urge=cdec.urge,

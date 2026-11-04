@@ -14,6 +14,38 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-11-01 · 极简条（1200×170）—— 信息一个不少，只是排得更密
+
+**为什么**：用户要「更紧凑，但**东西都不能丢**」。
+所以不是删字段，而是把 4 列 1800×300 重排成一条 **1200×170**：
+脑图 + 三列密排 + 4 行日志。
+
+**改哪**：
+- `fly_panel.py` 新增 `render_mini()`（1200×170），一屏内保留**全部**信息：
+  脑图 · 放电/累计步数 · 朝向/速度/驱动/位移/方向/卡 · 饥饿/阈值/驱动力/漂移 ·
+  气味/出手/战斗/副本 · 按键 W S A D 跳 冲（实时高亮）· 本拍真正发出的键 ·
+  左转/右转/跳/冲/撞墙/卡住 · 连携 成-败 · 闪避 纵/O/红 成-败 · 挨打/打死 · z ·
+  本拍指令 · 4 行实时指令流 · 底部饥饿条
+- 接管时整条压红 + 60px 大字「玩家接管中」+ 底部「按 HOME 键交还控制」
+  （170px 高的条里用 150px 字会溢出，所以单独一个 `f_mid=60`）
+- `endfield_fly.py`：`--overlay-mini`（叠加窗口按 1200×170 建），渲染走 `_ov_draw()` 分发
+- 叠加状态字典补 `f_combo_ok/f_combo_ng/f_dg_*/f_nreward/f_npunish/f_keys`
+- `start_cc.cmd`：`--overlay-mini --overlay-scale 1.0`
+
+**怎么验**：
+```bash
+python -u -X utf8 endfield_fly.py --dry --seconds 3 --forage --combat \
+  --overlay --overlay-mini --overlay-x 0 --overlay-y 0
+# 期望：叠加面板 1200×170 @ (0,0)  [极简条]
+```
+预览图：`_handoff/out/si_ref/panel_mini.png` / `panel_mini_takeover.png`
+
+**坑**：改 `fly_panel.py` 时一次行拼接把整个 `render()` 弄丢了（`def render` 直接消失），
+靠 `git checkout -- fly_panel.py` 恢复后重做。**大文件的行级手术前先 commit**，
+或者改完立刻 `grep "def render"` 确认方法还在。
+
+---
+
 ## 2026-11-01 · 叠加面板「精简模式」（--overlay-lite）+ 缩到 1044×204
 
 **为什么**：用户要「还是放顶上，但要更紧凑」。
