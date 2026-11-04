@@ -110,6 +110,7 @@ class FlyPanel:
         self.f_huge = _pick(FONT_CN, 150)  # 接管时的超大标题（再大一些）
         self.f_huge2 = _pick(FONT_CN, 44)
         self.f_mid = _pick(FONT_CN, 60)    # 极简条里的接管大字
+        self.f_stat = _pick(FONT_CN, 26)   # 底部横排状态栏（大字）
         self.f_key = _pick(FONT_CN, 12)
         self.f_mono = _pick(FONT_MONO, 12)
         self.f_log = _pick(FONT_CN, 12)
@@ -513,6 +514,30 @@ class FlyPanel:
                    f"按 {st.get('f_takeover_key', 'HOME')} 键交还控制",
                    font=self.f_val, fill=(255, 214, 176), anchor="rm")
 
+        else:
+            # ★★ 常态：底部一条**横排大字状态栏**（2026-11-01 用户要求）——
+            #   饥饿 / 犹豫度 / 血 / 连携 / 闪避 / 挨打 / 打死 一眼能看清。
+            _hp = st.get("f_hp")
+            _hps = (f"{float(_hp) * 100:.0f}%" if isinstance(_hp, (int, float))
+                    and float(_hp) == float(_hp) else "—")
+            _items = [
+                ("饥饿", f"{float(st.get('f_hunger', 0)):.2f}", HOT if float(st.get('f_hunger', 0)) > 0.5 else FG),
+                ("犹豫", f"{float(st.get('cm_hesit', 0)):+.2f}", WARM if abs(float(st.get('cm_hesit', 0))) < 0.25 else FG),
+                ("血", _hps, FG),
+                ("连携", f"{st.get('f_combo_ok', 0)}/{st.get('f_combo_ng', 0)}", ACCENT),
+                ("闪避", f"{st.get('f_dg_ok', 0)}/{st.get('f_dg_ng', 0)}", ACCENT),
+                ("挨打", f"{st.get('f_npunish', 0)}", DIM),
+                ("打死", f"{st.get('f_nreward', 0)}", DIM),
+                ("战斗", "是" if st.get("cm_mark") else "否", OK if st.get("cm_mark") else DIM),
+            ]
+            d.rectangle([0, _ty, W, _ty + TAKEOVER_H - 1], fill=(10, 12, 18, 236))
+            d.rectangle([0, _ty, W, _ty + 1], fill=(58, 74, 96))
+            _px = 16
+            for _lab, _val, _col in _items:
+                d.text((_px, _ty + 13), _lab, font=self.f_val, fill=(168, 186, 208))
+                _w = d.textlength(_lab, font=self.f_val)
+                d.text((_px + _w + 4, _ty + 11), str(_val), font=self.f_stat, fill=_col)
+                _px += _w + 12 + d.textlength(str(_val), font=self.f_stat) + 26
         # ★★ 接管时的**超大遮罩**（2026-11-01 用户要求：再大一些、盖在可视化上）
         #    用单独的 RGBA 图层 + alpha_composite 做**真半透明**，
         #    这样神经活动/按键那些内容还看得见（直接 d.rectangle 会把像素盖掉）。
