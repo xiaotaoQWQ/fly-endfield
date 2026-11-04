@@ -283,6 +283,12 @@ def main():
                          "不用重启。改完下一拍自动生效")
     ap.add_argument("--tune-port", type=int, default=8791,
                     help="调参面板端口（默认 8791）")
+    # ★★ 2026-11-01：危机合约专用调试台（独立网页，冷却全部可调到 0）
+    ap.add_argument("--cc-debug", action="store_true",
+                    help="开「危机合约调试台」：所有冷却可调到 0、一键归零、实时状态"
+                         "（默认关；开了之后浏览器打开 http://127.0.0.1:9121）")
+    ap.add_argument("--cc-port", type=int, default=9121,
+                    help="危机合约调试台的端口（默认 9121）")
     # ★ 闪避：Shift 点一下。体力有限、只能连放 2 次，所以必须有冷却。
     ap.add_argument("--dodge", action="store_true", default=True,
                     help="威胁出现时自动闪避（默认开）")
@@ -879,6 +885,13 @@ def main():
         _panel_url = start_tuner(args, port=args.tune_port, status_fn=_tune_status,
                                  sync_hooks=[_tune_sync],
                                  ctl=CTL, game_fn=_game_check, mem=_MEM)
+
+    cc_status = None
+    if args.cc_debug:
+        from live_tune_cc import start_cc_debug
+        cc_status = {}
+        start_cc_debug(args, port=args.cc_port,
+                       status_fn=lambda: dict(cc_status))
         # ★ 真·应用程序窗口（tkinter）。HTTP 服务保留在旁边 ——
         #   本地用窗口，手机/另一台机器用网页，两边读的是同一份状态。
         if args.panel:
@@ -2650,6 +2663,30 @@ def main():
                 if not moved:
                     heading = (heading + turn_dx * DEG_PER_MOUSE_PX) % 360.0
 
+                # ★ 危机合约调试台的状态（主循环里算，HTTP 线程只读缓存 —— 不跨线程碰数据）
+                if cc_status is not None:
+                    try:
+                        _fg = forager or {}
+                        _h = fod.get("auto_hp") if fod is not None else None
+                        cc_status["text"] = (
+                            f"接管：{'★是（果蝇已停手）' if takeover else '否'}"
+                            f"    战斗：{'是' if m_on else '否'}"
+                            f"    ONNX {int(_fg.get('onnx_n') or 0)}框 "
+                            f"{float(_fg.get('onnx_ms') or 0):.0f}ms\n"
+                            f"连携 成{int(_fg.get('n_combo_ok') or 0)}/败{int(_fg.get('n_combo_fail') or 0)}"
+                            f"    闪避 纵{int(_fg.get('n_dodge_cortex') or 0)}"
+                            f"/O{int(_fg.get('n_dodge_onnx') or 0)}"
+                            f"/闪红{int(_fg.get('n_dodge_flash') or 0)}"
+                            f" 成{int(_fg.get('n_dodge_ok') or 0)}/败{int(_fg.get('n_dodge_fail') or 0)}\n"
+                            f"挨打 {int(_fg.get('n_punish') or 0)}    打死 {int(_fg.get('n_reward') or 0)}"
+                            f"    饥饿 {float(getattr(_fg.get('hg'), 'h', 0.0) or 0.0):.2f}"
+                            f"    血 {(float(_h) if _h is not None else -1):.2f}\n"
+                            f"主视角 looming z最大 {float(_fg.get('z_s_max') or 0):+.2f}"
+                            f"    闪红 R−G {float(_fg.get('flash_rg') or 0):+.0f}"
+                            f"    阈值 z≥{float(args.dodge_z):.1f}/闪红≥{float(args.dodge_flash_red):.0f}"
+                        )
+                    except Exception:
+                        pass
                 rows.append(dict(tick=tick, t=round(ts, 2),
                                  drive=float(drive[rm._pr_idx].mean()),
                                  margin=float(o["margin"]), direction=direction,
