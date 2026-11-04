@@ -289,6 +289,11 @@ def main():
                          "所有冷却可拖到 0、一键归零、闪避开/关")
     ap.add_argument("--cc-web", action="store_true",
                     help="【旧】上网页面板（默认关 —— 现在用本地窗口就够了）")
+    # ★★ 2026-11-01：启动后**立刻开跑**，不用再点窗口里的「启动」。
+    #   危机合约那种长时间挂机，少点一次手是很有价值的。
+    ap.add_argument("--auto-start", action="store_true",
+                    help="启动后立刻开始（不点「启动」）；配合 --panel 使用。"
+                         "一轮跑完还会**自动再来一轮**（点「停止」才结束）")
     # ★ 闪避：Shift 点一下。体力有限、只能连放 2 次，所以必须有冷却。
     ap.add_argument("--dodge", action="store_true", default=True,
                     help="威胁出现时自动闪避（默认开）")
@@ -738,8 +743,9 @@ def main():
                 print(f"    [poll] 出错: {type(_e).__name__}: {_e}", flush=True)
                 traceback.print_exc()
 
-    CTL = {"running": not args.panel, "pause": False, "stop": False,
-       "load_slot": None, "reset_mem": False}
+    CTL = {"running": (not args.panel) or bool(args.auto_start),
+           "pause": False, "stop": False,
+           "load_slot": None, "reset_mem": False}
     _pause_logged = [False]        # 暂停提示只打一次（用列表当可变闭包）
     _ov_hidden = [False]           # 叠加面板当前是不是被藏起来了
     _ov_err = [0]                  # 叠加面板更新失败次数（只报前几次）
@@ -3000,11 +3006,21 @@ def main():
             print("    想彻底退出：点窗口上的「停止」，或者关掉窗口。")
             print("=" * 62, flush=True)
             _t_idle = time.time()
+            _auto_t0 = time.time()
+
+            _t_idle = time.time()
             _n_idle = 0
             while not CTL["running"] and not CTL["stop"]:
                 # ★ 空闲也要续上：刷新游戏检测缓存 + 扫标记
                 #   （少了这行，界面上的「位置」会停在最后一拍，
                 #     而且启动按钮的可点状态可能一直是旧的）
+                # ★ 自动再来一轮（--auto-start）：等 3 秒就重新开跑，点「停止」可中止
+                if (args.auto_start and not CTL["stop"]
+                    and time.time() - _auto_t0 >= 3.0):
+                    print(f"  [自动] 本轮结束 3 秒 → 自动再来一轮（点窗口「停止」可中止）",
+                          flush=True)
+                    CTL["running"] = True
+                    break
                 _poll_markers_idle()
                 time.sleep(0.25)
                 _n_idle += 1

@@ -12,6 +12,7 @@ REM      所有冷却可拖到 0 / 一键全部归零 / 闪避开-关 / 实时�
 REM    - cooldowns preset to 0 for max output
 REM
 REM  Keys: HOME = player takeover,  9 = combat mode toggle
+REM  Auto: 启动即开跑；一轮结束 3 秒后自动再来一轮（点「停止」才结束）
 REM
 REM  Log: out\cc_run.log
 REM ============================================================
@@ -40,7 +41,7 @@ python -u -X utf8 endfield_fly.py ^
     --motor pop ^
     --eye main --eye-hz 30 ^
     --overlay ^
-    --cc-debug ^
+    --cc-debug --auto-start ^
     --forage --evac --auto-outcome --combo --skill-auto --ult ^
     --combo-hunger 0.0 --combo-cool 0 --combo-cool-full 0 --dodge-cool 0.6 ^
     --attack-hold 1.0 ^
