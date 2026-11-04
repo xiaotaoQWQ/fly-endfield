@@ -177,6 +177,12 @@ def main():
     # ★ 极简条：1200×170，信息一个不少（脑图+三列密排+日志），只是排得更密。
     ap.add_argument("--overlay-mini", action="store_true",
                     help="极简条叠加面板（1200×170，保留全部信息）")
+    # ★★ 2026-11-01：底部那条「饥饿/犹豫/血…」状态栏整个去掉，
+    #   并且把**战斗条和觅食条并排**摆在同一行（各占一半宽）。
+    ap.add_argument("--overlay-nostatus", action="store_true",
+                    help="去掉底部状态条（接管红条也一起去掉）")
+    ap.add_argument("--overlay-strip-row", action="store_true",
+                    help="战斗条 + 觅食条并排成一行（面板矮 84px，代价是两条各压到一半宽）")
     ap.add_argument("--overlay-every", type=int, default=1,
                     help="每 N 拍刷新一次叠加（渲染约 60-100ms，太勤会拖慢闭环）")
     ap.add_argument("--dry", action="store_true", help="只决策不按键")
@@ -986,7 +992,9 @@ def main():
         _strips = ("takeover",)
     if args.overlay:
         from fly_panel import FlyPanel
-        panel = FlyPanel(strips=_strips or ("combat", "forage"))
+        panel = FlyPanel(strips=_strips or ("combat", "forage"),
+                            takeover_h=(0 if args.overlay_nostatus else 52),
+                            strip_row=bool(args.overlay_strip_row))
     if args.eye == "main":
         from ef_eye import MainEye
         # 自动裁切时框内本来就没有 HUD/叠加面板 → 遮罩传空表，别自找偏置

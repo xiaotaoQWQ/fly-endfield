@@ -76,9 +76,9 @@ class FlyPanel:
     """顶部横幅。默认 1800×340，四列。"""
 
     def __init__(self, w: int = 1800, h: int = 300,
-                 strips=("combat", "forage")):
+                 strips=("combat", "forage"), takeover_h: int = TAKEOVER_H,
+                 strip_row: bool = False):
         """strips = 底部要预留哪几条。
-
         ★ 按需预留，不是无条件都留：--forage 模式下战斗条永远空着，白占 88px。
           Overlay 尺寸在启动时固定，所以这里一次性定死。
           （运行时用 0 键临时开战斗模式时，没预留的那条会被裁掉。）
@@ -89,8 +89,10 @@ class FlyPanel:
         self.strips = tuple(strips)
         self.c_h = COMBAT_H if "combat" in self.strips else 0
         self.f_h = FORAGE_H if "forage" in self.strips else 0
-        self.t_h = TAKEOVER_H          # 接管提示条：永远预留
-        self.extra_h = self.c_h + self.f_h + self.t_h
+        self.t_h = int(takeover_h)      # 接管提示条（0 = 不要这条）
+        self.strip_row = bool(strip_row)   # True = 战斗/觅食**并排**（各占一半宽）
+        self.extra_h = ((max(self.c_h, self.f_h) if self.strip_row
+                          else (self.c_h + self.f_h)) + self.t_h)
         self.pad = 12
         # 四列几何
         self.c1 = (12, 452)       # 标题 + 全脑
@@ -495,17 +497,31 @@ class FlyPanel:
             self._logline(d, lx0 + 8, ly + 5 + i * lh, e)
 
         # ================= 战斗条（只在战斗模式打开时）=================
-        if combat_on and self.c_h:
-            self._combat(d, self.h, st)
-        # ================= 觅食闭环条 =================
-        if forage_on and self.f_h:
-            self._forage(d, self.h + self.c_h, st)
+        # ★★ 2026-11-01：战斗条 + 觅食条**并排**（--overlay-strip-row）
+        _Sy = max(self.c_h, self.f_h) if self.strip_row else (self.c_h + self.f_h)
+        if self.strip_row:
+            if combat_on and self.c_h:
+                _ci = Image.new("RGBA", (self.w, self.c_h), (0, 0, 0, 0))
+                self._combat(ImageDraw.Draw(_ci), 0, st)
+                _ci = _ci.resize((self.w // 2, self.c_h), Image.LANCZOS)
+                img.alpha_composite(_ci, (0, self.h))
+            if forage_on and self.f_h:
+                _fi = Image.new("RGBA", (self.w, self.f_h), (0, 0, 0, 0))
+                self._forage(ImageDraw.Draw(_fi), 0, st)
+                _fi = _fi.resize((self.w // 2, self.f_h), Image.LANCZOS)
+                img.alpha_composite(_fi, (self.w // 2, self.h))
+        else:
+            if combat_on and self.c_h:
+                self._combat(d, self.h, st)
+            if forage_on and self.f_h:
+                self._forage(d, self.h + self.c_h, st)
 
         # ★★ 玩家接管条（2026-11-01）：在**最底下单独预留的 52px** 里画，
         #    不压主面板任何内容；字号用 f_big(34)，一眼就能看见。
-        _ty = self.h + self.c_h + self.f_h
-        if st.get("f_takeover"):
-            d.rectangle([0, _ty, W, _ty + TAKEOVER_H - 1], fill=(126, 30, 30, 248))
+        _ty = self.h + _Sy
+        if self.t_h <= 0:
+            pass          # 不要底部状态条（--overlay-nostatus）
+        elif st.get("f_takeover"):
             d.rectangle([0, _ty, W, _ty + 3], fill=(255, 200, 130))
             d.rectangle([0, _ty, 6, _ty + TAKEOVER_H - 1], fill=(255, 200, 130))
             d.text((30, _ty + TAKEOVER_H // 2 + 1), "● 玩家接管中",
