@@ -760,34 +760,51 @@ class FlyPanel:
         d.text((x0 + 370, yy), f"脚本 {cnt.get('script', 0)}", font=self.f_tiny, fill=FAINT)
 
         # --- 第 2/3 行：两条通道 ---
+        # ★★ 攻击 / 技能两条**并排**（各占一半宽），不再上下叠
         for i, (lab, zk, dk, sk, hit, col) in enumerate((
                 ("攻击▸左键", "cm_z_a", "cm_der_a", "cm_src_a", st.get("cm_atk"), HOT),
                 ("技能▸逼近", "cm_z_s", "cm_der_s", "cm_src_s", st.get("cm_skl"), ACCENT))):
-            y = yy + 21 + i * 21
+            cx = x0 + 8 + i * 446
+            y = yy + 21
             z = float(st.get(zk) or 0.0)
             der = float(st.get(dk) or 0.0)
-            d.text((x0 + 8, y), lab, font=self.f_tiny, fill=col if hit else DIM)
-            _lx = x0 + 8 + int(d.textlength(lab, font=self.f_tiny)) + 14
+            d.text((cx, y), lab, font=self.f_tiny, fill=col if hit else DIM)
+            _lx = cx + int(d.textlength(lab, font=self.f_tiny)) + 10
             if hit:
-                d.rectangle([_lx, y - 1, _lx + 30, y + 13], fill=col, outline=FG)
-                d.text((_lx + 4, y), "按下", font=self.f_tiny, fill=(10, 10, 10))
-            _lx += 36
+                d.rectangle([_lx, y - 1, _lx + 28, y + 13], fill=col, outline=FG)
+                d.text((_lx + 3, y), "按下", font=self.f_tiny, fill=(10, 10, 10))
+            _lx += 34
             d.text((_lx, y), f"{z:+5.2f}", font=self.f_mono,
                    fill=col if z > 1.0 else FAINT)
-            _bx = _lx + 44
-            self._bar(d, _bx, y + 1, 104, 11, (z + 3.0) / 6.0,
+            _bx = _lx + 40
+            self._bar(d, _bx, y + 1, 84, 11, (z + 3.0) / 6.0,
                       col if z > 1.0 else (70, 74, 86))
-            _tx = _bx + int(104 * ((1.0 + 3.0) / 6.0))
+            _tx = _bx + int(84 * ((1.0 + 3.0) / 6.0))
             d.line([_tx, y - 2, _tx, y + 14], fill=FG, width=1)
-            _dx = _bx + 112
+            _dx = _bx + 92
             d.text((_dx, y), f"{der:+.5f}/s", font=self.f_tiny, fill=DIM)
             src = st.get(sk) or "-"
-            d.text((_dx + 82, y),
+            d.text((_dx + 72, y),
                    {"fly": "← 果蝇", "cooldown": "← 冷却拦",
                     "sustain": "← 持续", "hold": "← 持续中"}.get(src, ""),
                    font=self.f_tiny,
                    fill=OK if src == "fly" else (
                        WARM if src in ("cooldown", "sustain") else FAINT))
+
+        # --- 第 3 行：犹豫度（两条通道的活动差）---
+        y = yy + 42
+        hes = float(st.get("cm_hesit") or 0.0)
+        certain = abs(hes) > 0.25
+        d.text((x0 + 8, y), "犹豫", font=self.f_tiny, fill=DIM)
+        for _k in range(20):
+            _bx = x0 + 44 + _k * 11
+            if certain or (_k % 2 == 0):
+                d.rectangle([_bx, y, _bx + 8, y + 11],
+                            fill=HOT if certain else (86, 90, 100))
+        d.text((x0 + 268, y - 1), f"{hes:+.2f}", font=self.f_mono,
+               fill=HOT if certain else DIM)
+        d.text((x0 + 312, y), "很确定" if certain else "在犹豫",
+               font=self.f_tiny, fill=HOT if certain else DIM)
     def _forage_compact(self, d, x0: int, y0: int, w: int, st: dict, h: int = FORAGE_H):
         """觅食闭环条（半宽紧凑版，900×84）——字段一个不少。"""
         d.rectangle([x0, y0, x0 + w - 1, y0 + h - 1], fill=(14, 18, 12))
