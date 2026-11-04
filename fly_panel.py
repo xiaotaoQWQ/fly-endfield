@@ -505,7 +505,8 @@ class FlyPanel:
             if combat_on and self.c_h:
                 self._combat_compact(d, 0, self.h, _half, st)
             if forage_on and self.f_h:
-                self._forage_compact(d, _half, self.h, _half, st)
+                self._forage_compact(d, _half, self.h, _half, st, _Sy)
+            d.line([_half, self.h, _half, self.h + _Sy - 1], fill=(58, 64, 78))
         else:
             if combat_on and self.c_h:
                 self._combat(d, self.h, st)
@@ -668,7 +669,7 @@ class FlyPanel:
             d.text((216, yy), "副本外", font=self.f_tiny, fill=FAINT)
 
         # --- 饥饿值：循环的节拍器 ---
-        h = float(st.get("f_hunger") or 0.0)
+        hg = float(st.get("f_hunger") or 0.0)
         d.text((12, yy + 24), "饥饿值 h", font=self.f_tiny, fill=DIM)
         d.text((72, yy + 22), f"{h:.2f}", font=self.f_mono,
                fill=HOT if h > 0.5 else DIM)
@@ -762,11 +763,11 @@ class FlyPanel:
         for i, (lab, zk, dk, sk, hit, col) in enumerate((
                 ("攻击▸左键", "cm_z_a", "cm_der_a", "cm_src_a", st.get("cm_atk"), HOT),
                 ("技能▸逼近", "cm_z_s", "cm_der_s", "cm_src_s", st.get("cm_skl"), ACCENT))):
-            y = yy + 20 + i * 24
+            y = yy + 21 + i * 21
             z = float(st.get(zk) or 0.0)
             der = float(st.get(dk) or 0.0)
             d.text((x0 + 8, y), lab, font=self.f_tiny, fill=col if hit else DIM)
-            _lx = x0 + 8 + int(d.textlength(lab, font=self.f_tiny)) + 8
+            _lx = x0 + 8 + int(d.textlength(lab, font=self.f_tiny)) + 14
             if hit:
                 d.rectangle([_lx, y - 1, _lx + 30, y + 13], fill=col, outline=FG)
                 d.text((_lx + 4, y), "按下", font=self.f_tiny, fill=(10, 10, 10))
@@ -787,9 +788,9 @@ class FlyPanel:
                    font=self.f_tiny,
                    fill=OK if src == "fly" else (
                        WARM if src in ("cooldown", "sustain") else FAINT))
-    def _forage_compact(self, d, x0: int, y0: int, w: int, st: dict):
+    def _forage_compact(self, d, x0: int, y0: int, w: int, st: dict, h: int = FORAGE_H):
         """觅食闭环条（半宽紧凑版，900×84）——字段一个不少。"""
-        d.rectangle([x0, y0, x0 + w - 1, y0 + FORAGE_H - 1], fill=(14, 18, 12))
+        d.rectangle([x0, y0, x0 + w - 1, y0 + h - 1], fill=(14, 18, 12))
         yy = y0 + 5
         d.text((x0 + 8, yy), "觅食", font=self.f_lab, fill=FG)
         d.ellipse([x0 + 44, yy + 3, x0 + 52, yy + 11], fill=OK)
@@ -847,13 +848,13 @@ class FlyPanel:
         else:
             d.text((x0 + 262, yy), "ONNX 未启用", font=self.f_tiny, fill=FAINT)
 
-        y = yy + 22
-        h = float(st.get("f_hunger") or 0.0)
+        y = yy + 21
+        hg = float(st.get("f_hunger") or 0.0)
         d.text((x0 + 8, y), "饥饿", font=self.f_tiny, fill=DIM)
-        d.text((x0 + 42, y - 1), f"{h:.2f}", font=self.f_mono,
-               fill=HOT if h > 0.5 else DIM)
-        self._bar(d, x0 + 78, y + 1, 88, 10, h,
-                  HOT if h > 0.35 else (90, 96, 80), bg=(32, 34, 28))
+        d.text((x0 + 42, y - 1), f"{hg:.2f}", font=self.f_mono,
+               fill=HOT if hg > 0.5 else DIM)
+        self._bar(d, x0 + 78, y + 1, 88, 10, hg,
+                  HOT if hg > 0.35 else (90, 96, 80), bg=(32, 34, 28))
         urge = float(st.get("f_urge") or 0.0)
         thr = float(st.get("f_thr") or 0.35)
         atk = bool(st.get("f_attack"))
@@ -879,7 +880,7 @@ class FlyPanel:
                font=self.f_tiny, fill=WARM)
         d.text((x0 + 340, y), f"通道 {st.get('f_ch', '')}", font=self.f_tiny, fill=FAINT)
 
-        y = yy + 60
+        y = yy + 63
         if st.get("f_auto"):
             hp = st.get("f_hp")
             vg = st.get("f_vig")
