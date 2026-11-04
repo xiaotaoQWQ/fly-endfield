@@ -161,6 +161,11 @@ def main():
                     help="显示实时可视化叠加（全脑活动 + 朝向 + 动作 + 轨迹）")
     ap.add_argument("--overlay-x", type=int, default=380)
     ap.add_argument("--overlay-y", type=int, default=0)
+    # ★★ 2026-11-01：水平居中到**游戏窗口的中轴线**顶部，y 固定 0。
+    #   这样不管游戏在哪个显示器、多宽，面板都在正中，且不会压到连携提示区
+    #   （提示在内容 y≥500，面板高度 ~220，离得远）。
+    ap.add_argument("--overlay-center", action="store_true",
+                    help="叠加面板水平居中到游戏窗口中轴线、贴顶（覆盖 --overlay-x）")
     # ★★ 2026-11-01：叠加面板整体缩放。面板太大会**压住连携提示区域**
     #   （提示在内容坐标 x1490~1630, y500~630）—— 压住了抓屏就看不到，E 自然不按。
     ap.add_argument("--overlay-scale", type=float, default=1.0,
@@ -1386,9 +1391,16 @@ def main():
             _ow, _oh = panel.w, panel.h + panel.extra_h
         _ov_w = max(200, int(round(_ow * args.overlay_scale)))
         _ov_h = max(90, int(round(_oh * args.overlay_scale)))
-        ov = Overlay(_ov_w, _ov_h, x=args.overlay_x, y=args.overlay_y)
+        _ovx, _ovy = int(args.overlay_x), int(args.overlay_y)
+        if args.overlay_center:
+            try:
+                _ovx = int(x + (w - _ov_w) / 2)   # x/w = 游戏窗口矩形
+                _ovy = 0
+            except Exception:
+                pass
+        ov = Overlay(_ov_w, _ov_h, x=_ovx, y=_ovy)
         ov.pump()
-        print(f"叠加面板 {_ov_w}×{_ov_h} @ ({args.overlay_x},{args.overlay_y})"
+        print(f"叠加面板 {_ov_w}×{_ov_h} @ ({_ovx},{_ovy})"
               f"  hwnd={ov.hwnd}"
               + ("  [极简条]" if args.overlay_mini else ""))
 
