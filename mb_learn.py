@@ -460,7 +460,9 @@ def innate_priority(h: float, hp, combat_age: float,
 def select_skill(gscores: np.ndarray, h: float, hp, combat_age: float,
                  learn_gain: float = 0.30, heal_hp: float = 0.5,
                  roles=None, blocked=None, hp_low_hint: bool = False,
-                 last_times=None, rotate: bool = True) -> int:
+                 last_times=None, rotate: bool = True,
+                 sample: bool = False, skill_temp: float = 0.6,
+                 rng=None) -> int:
     """先天优先级 + 学习微调 → 选一个技能（返回 1..4）。
 
     `gscores` 是蘑菇体四个分区的输出（见 MushroomBodyLearner.group_scores）。
@@ -486,6 +488,20 @@ def select_skill(gscores: np.ndarray, h: float, hp, combat_age: float,
                 p[int(_b) - 1] = -1e9
         if float(np.max(p)) <= -1e8:
             return 0
+    # ★★ 2026-11-01：**软最大化采样** —— 这才是「真果蝇挑技能」：
+    #   优先级 p 来自蘑菇体四分区的学习输出 + 先天语义，槽位按 p 的
+    #   概率被选中（不是固定轮转，也不是永远 argmax）。
+    #   skill_temp 越小越确定（像 argmax），越大越随机；0 = 退回 argmax。
+    #   冷却/闸门已经在 blocked 里，采样只在**可用槽**之间进行。
+    if sample and skill_temp > 0.0:
+        _pv = np.asarray(p, dtype=np.float64)
+        _pv = np.nan_to_num(_pv, nan=-1e9, posinf=1e9, neginf=-1e9)
+        _pv = np.where(_pv > 0.0, _pv, -1e9)
+        if np.max(_pv) > -1e8:
+            _q = np.exp((_pv - np.max(_pv)) / max(float(skill_temp), 1e-3))
+            _q = _q / _q.sum()
+            _rng = rng if rng is not None else np.random.default_rng()
+            return int(_rng.choice(4, p=_q)) + 1
     # ★★ 2026-11-01：**回血走独立通道** —— 不参与 LRU 轮转。
     #   低血 + 冷却好了 → 立刻回血（保命优先）；否则回血槽根本不进候选。
     if roles is not None:

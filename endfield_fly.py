@@ -404,6 +404,13 @@ def main():
     #   游戏本身有技能冷却，按得更快只是白按 + 日志刷屏（实测「后期疯狂按技能1」）。
     # ★★ 全局技能闸（2026-11-01）：按过任何一个技能键后 N 秒内，
     #   不再按任何技能键（回血除外 —— 保命不排队）。
+    # ★★ 技能怎么挑：sample = 真果蝇（按蘑菇体分数做概率采样，默认）；
+    #   lru = 固定轮转；argmax = 永远选分最高的（会一直按同一个槽）。
+    ap.add_argument("--skill-pick", default="sample",
+                    choices=["sample", "lru", "argmax"],
+                    help="技能选择方式（默认 sample = 果蝇按分数概率挑）")
+    ap.add_argument("--skill-temp", type=float, default=0.6,
+                    help="采样温度：越小越确定（0=等价 argmax），越大越随机（默认 0.6）")
     ap.add_argument("--skill-global-gap", type=float, default=5.0,
                     help="任意两次技能之间的最小间隔（秒，默认 5；回血不受限）")
     ap.add_argument("--skill-min-gap", type=float, default=0.8,
@@ -2515,6 +2522,9 @@ def main():
                                             1 for _v in (st_onnx.get("hp_danger") or [])
                                             if _v)
                                     _st = fod.setdefault("slot_t", {})
+                                    if "_sk_rng" not in fod:
+                                        fod["_sk_rng"] = np.random.default_rng(12345)
+                                    _sk_rng = fod["_sk_rng"]
                                     # ★ 冷却按**角色**区分：回血槽按一次等 60s，
                                     #   其它槽按 skill_slot_cool（回血不是连按）。
                                     _blk = set()
@@ -2556,7 +2566,10 @@ def main():
                                         roles=_ROLES_TUPLE, blocked=_blk,
                                         hp_low_hint=_hp_danger,
                                         last_times=_st,
-                                        rotate=True)
+                                        rotate=(args.skill_pick == "lru"),
+                                        sample=(args.skill_pick == "sample"),
+                                        skill_temp=float(args.skill_temp),
+                                        rng=_sk_rng)
                                     # ★ 返回的是**槽号**（1..4），不是键 ——
                                     #   键由 --key-skillN 决定。这样哪个槽什么含义
                                     #   和按哪个键是两件独立可配的事。
