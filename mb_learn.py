@@ -486,6 +486,13 @@ def select_skill(gscores: np.ndarray, h: float, hp, combat_age: float,
                 p[int(_b) - 1] = -1e9
         if float(np.max(p)) <= -1e8:
             return 0
+    # ★★ 2026-11-01：**回血走独立通道** —— 不参与 LRU 轮转。
+    #   低血 + 冷却好了 → 立刻回血（保命优先）；否则回血槽根本不进候选。
+    if roles is not None:
+        for _i, _role in enumerate(tuple(roles)[:4]):
+            if _role == "heal" and float(p[_i]) > 0.0:
+                if not (blocked and (_i + 1) in blocked):
+                    return int(_i) + 1
     # ★★ 2026-11-01：**轮转优先**（LRU）。
     #   只按 argmax 时，底盘最高的槽（主攻/削弱）会一直压着别的槽，
     #   实测「战斗过程几乎全在按 S1」。改成：在所有**可用且优先级 > 0** 的槽里，
