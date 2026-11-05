@@ -42,7 +42,7 @@ python -u -X utf8 endfield_fly.py ^
     --eye main --eye-hz 30 ^
     --overlay --overlay-scale 1.0 --overlay-center --overlay-strip-row --overlay-nostatus ^
     --cc-debug ^
-    --forage --auto-outcome --combo --skill-auto --ult ^
+    --forage --auto-outcome --combo --skill-auto --skill-pick sample --skill-temp 0.6 --ult ^
     --always-combat --combat ^
     --dodge-primary onnx --dodge-onnx-conf 0.15 --combo-hunger 0.0 --combo-cool 0 --combo-cool-full 0 --dodge-cool 0.6 ^
     --attack-hold 1.0 ^
