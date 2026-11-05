@@ -1585,6 +1585,10 @@ def main():
     print("  技能槽配置：" + "  ".join(
         f"{i}={_ROLE_CN.get(_ROLES_TUPLE[i-1], _ROLES_TUPLE[i-1])}→键{_KEYMAP[i]}"
         for i in range(1, 5)))
+    print(f"  回血阈值：血 < {args.heal_hp*100:.0f}% 触发回血槽（--heal-hp 可调）"
+          f" · 每槽各自冷却 {args.skill_slot_cool:.1f}s（--skill-slot-cool）"
+          f" · 技能间隔 ≥{max(args.skill_interval, args.skill_min_gap):.2f}s"
+          "（血读不到时用 ONNX「血危」标签兜底）")
     print(f"  大招键序列：{args.key_ult}（轮换）")
 
     # ★★ 整帧对象：每拍抓一次屏幕，所有 HUD 从它切片。
@@ -2481,6 +2485,12 @@ def main():
                                 if args.skill_auto:
                                     from mb_learn import select_skill
                                     # ★ 先把「刚按过的槽」排除（--skill-slot-cool），四槽才会真正轮起来
+                                    # 血量读不到时，用 ONNX 的「血危」标签兜底
+                                    _hp_danger = 0
+                                    if st_onnx is not None and st_onnx.get("ok"):
+                                        _hp_danger = sum(
+                                            1 for _v in (st_onnx.get("hp_danger") or [])
+                                            if _v)
                                     _st = fod.setdefault("slot_t", {})
                                     _blk = {_j + 1 for _j in range(4)
                                            if ts - _st.get(_j + 1, -99.0)
@@ -2490,7 +2500,8 @@ def main():
                                         fod.get("auto_hp"),
                                         ts - fod["combat_t0"],
                                         heal_hp=args.heal_hp,
-                                        roles=_ROLES_TUPLE, blocked=_blk)
+                                        roles=_ROLES_TUPLE, blocked=_blk,
+                                        hp_low_hint=_hp_danger)
                                     # ★ 返回的是**槽号**（1..4），不是键 ——
                                     #   键由 --key-skillN 决定。这样哪个槽什么含义
                                     #   和按哪个键是两件独立可配的事。

@@ -365,7 +365,8 @@ class MushroomBodyLearner:
 
 
 def innate_priority(h: float, hp, combat_age: float,
-                    heal_hp: float = 0.5, roles=None) -> np.ndarray:
+                    heal_hp: float = 0.5, roles=None,
+                    hp_low_hint: bool = False) -> np.ndarray:
     """**先天技能轮换** —— 返回四个技能槽的先天优先级（0~1 量级）。
 
     ★ 技能槽的**含义可配置**（用户要求）。原来写死成
@@ -383,11 +384,22 @@ def innate_priority(h: float, hp, combat_age: float,
       所以先把语义当作**本能**写进来，学习只在上面微调优先级。
     """
     hh = float(max(0.0, min(1.0, h)))
-    hp_ok = isinstance(hp, float) and hp == hp
-    low = hp_ok and hp < heal_hp
+    # ★★ 2026-11-01：hp 可能是 numpy.float32 / int / 百分数。原来写死 isinstance(hp, float)，
+    #   只要传进来不是纯 Python float（比如 auto_outcome 返回的 np.float32），
+    #   hp_ok 就是 False —— 回血这一路**永远不触发**（用户反馈就是这个）。
+    try:
+        _hp = float(hp)
+        if _hp > 1.0:            # 43 → 0.43（有人习惯传百分数）
+            _hp = _hp / 100.0
+        hp_ok = (_hp == _hp) and (-1e-6 <= _hp <= 1.0 + 1e-6)
+    except (TypeError, ValueError):
+        _hp, hp_ok = 0.0, False
+    # 血读不到、但 ONNX 说「血危」→ 也当低血（hint_low）
+    hint_low = bool(hp_low_hint) and not hp_ok
+    low = (hp_ok and _hp < heal_hp) or hint_low
     # ★ 格挡：**中了段血**才用。血很少时该回血、血很满时不必防 ——
     #   格挡是**预防**，回血是**补救**，两者分工不同，不能都挂在"血低"上。
-    mid = hp_ok and heal_hp <= hp < min(0.95, heal_hp + 0.25)
+    mid = hp_ok and heal_hp <= _hp < min(0.95, heal_hp + 0.25)
     early = combat_age < 4.5
     midage = 4.5 <= combat_age < 9.5
 
@@ -400,7 +412,7 @@ def innate_priority(h: float, hp, combat_age: float,
         elif midage:
             p[2] = 1.45
         if low:
-            p[3] = 1.6 + 1.5 * (1.0 - float(hp) / heal_hp)
+            p[3] = 1.75 + 1.5 * max(0.0, 1.0 - _hp / max(heal_hp, 1e-3))
         return p
 
     p = np.zeros(4, dtype=np.float32)
@@ -424,7 +436,11 @@ def innate_priority(h: float, hp, combat_age: float,
         elif role == "heal":
             # ★ 回血优先级最高，而且**学不坏**：
             #   主攻上限 1.30 < 回血底 1.60。
-            p[i] = (1.6 + 1.5 * (1.0 - float(hp) / heal_hp)) if low else 0.0
+            # ★ 2026-11-01：低血阈值由 --heal-hp 控制（默认 0.5 = 半血触发）；
+            #   血读不到但 ONNX 报「血危」时也算低血（hint_low）。
+            #   1.75 的底 > 主攻上限 1.30，保证「保命」压过一切。
+            p[i] = ((1.75 + 1.5 * max(0.0, 1.0 - _hp / max(heal_hp, 1e-3)))
+                    if low else 0.0)
         elif role == "gather":
             # ★ 聚怪：开战**那一拍**放（把敌人拢到一起），晚放没意义 ——
             #   怪已经散开了。
@@ -443,7 +459,7 @@ def innate_priority(h: float, hp, combat_age: float,
 
 def select_skill(gscores: np.ndarray, h: float, hp, combat_age: float,
                  learn_gain: float = 0.30, heal_hp: float = 0.5,
-                 roles=None, blocked=None) -> int:
+                 roles=None, blocked=None, hp_low_hint: bool = False) -> int:
     """先天优先级 + 学习微调 → 选一个技能（返回 1..4）。
 
     `gscores` 是蘑菇体四个分区的输出（见 MushroomBodyLearner.group_scores）。
@@ -454,7 +470,8 @@ def select_skill(gscores: np.ndarray, h: float, hp, combat_age: float,
       没有上界 —— 实测组0 被强化后偏移到 0.92，直接盖掉了"血 25% 该回血"
       （保命规则的先天差距只有 0.14）。所以改成 tanh，夹进 ±learn_gain。
     """
-    p = innate_priority(h, hp, combat_age, heal_hp, roles=roles)
+    p = innate_priority(h, hp, combat_age, heal_hp, roles=roles,
+                        hp_low_hint=hp_low_hint)
     if gscores is not None and learn_gain > 0:
         g = np.asarray(gscores, dtype=np.float32)
         g = np.nan_to_num(g, nan=0.0, posinf=0.0, neginf=0.0)

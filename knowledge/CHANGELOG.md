@@ -14,6 +14,37 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-11-01 · 修「回血不触发」：hp 类型判死 + 半血阈值可调 + 血危兜底
+
+**现象**：血量低于半血也不放回血技（槽 3）。
+
+**根因**：`innate_priority` 里写的是
+```python
+hp_ok = isinstance(hp, float) and hp == hp      # ← 只认纯 Python float
+low   = hp_ok and hp < heal_hp
+```
+`auto_outcome` 返回的 `auto_hp` 很可能是 **np.float32**（也可能是 int / 百分数 / 字符串），
+`isinstance(x, float)` 直接 False → `low` 永远 False → **回血这一路等于关闭**。
+（面板上表现为「分区」正常、技能也放，但永远不放回血槽。）
+
+**改哪**（mb_learn.py）：
+- hp 解析改成 `float(hp)` + 容错：np.float32 / int / "0.30" / 43(百分数) 全部接受；
+  `>1.0` 自动当百分数除以 100；NaN/None/乱值 → `hp_ok=False`
+- `heal` 优先级底从 1.6 → **1.75**（主攻上限 1.30，保证保命压过一切）
+- 新增 `hp_low_hint`：**血读不到但 ONNX 报「血危」**时也当低血
+- `endfield_fly.py`：传 `hp_low_hint=sum(st_onnx["hp_danger"]) > 0`；
+  启动时打印「回血阈值：血 < 50% 触发回血槽（--heal-hp 可调）· 每槽冷却 6.0s」
+
+**实测（select_skill 直调）**：
+```
+hp=0.30 / np.float32(0.30) / 30 / 43.0 / "0.30"  →  槽 4（回血）
+hp=None + 血危标签                               →  槽 4
+heal_hp=0.5 → 血 0.40 回血 / 0.55 主攻            ← 半血阈值生效
+heal_hp=0.65 → 血 0.55 也回血                     ← 阈值可调
+```
+
+---
+
 ## 2026-11-01 · 修「只会按 SK1」：技能槽各自冷却 + 削弱/增伤留维持底盘
 
 **现象**：技能永远按 1（SK1），2/3/4 几乎不出现。
