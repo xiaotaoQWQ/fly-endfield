@@ -411,6 +411,9 @@ def main():
                     help="技能选择方式（默认 sample = 果蝇按分数概率挑）")
     ap.add_argument("--skill-temp", type=float, default=0.6,
                     help="采样温度：越小越确定（0=等价 argmax），越大越随机（默认 0.6）")
+    # ★ 学习偏移的上界：越大越听从蘑菇体学到的四分区分数，越小越靠先天语义
+    ap.add_argument("--skill-learn-gain", type=float, default=0.30,
+                    help="学习偏移上限（默认 0.30）。1.0+ 会让学到的分区分数压倒先天优先级")
     ap.add_argument("--skill-global-gap", type=float, default=5.0,
                     help="任意两次技能之间的最小间隔（秒，默认 5；回血不受限）")
     ap.add_argument("--skill-min-gap", type=float, default=0.8,
@@ -2569,6 +2572,7 @@ def main():
                                         rotate=(args.skill_pick == "lru"),
                                         sample=(args.skill_pick == "sample"),
                                         skill_temp=float(args.skill_temp),
+                                        learn_gain=float(args.skill_learn_gain),
                                         rng=_sk_rng)
                                     # ★ 返回的是**槽号**（1..4），不是键 ——
                                     #   键由 --key-skillN 决定。这样哪个槽什么含义
