@@ -406,6 +406,9 @@ def main():
                     help="技能按压的最小间隔（秒，默认 0.8）")
     # ★ 每个技能槽**各自的冷却**：刚按过的槽 N 秒内不再选（游戏里技能各有 CD）。
     #   没有这条时，「只会按 SK1」是必然的 —— 主攻底盘最高，argmax 永远选它。
+    ap.add_argument("--heal-cool", type=float, default=60.0,
+                    help="回血槽按一次后冷却多久（秒，默认 60）。回血不是连按 —— "
+                         "按一次等它生效，冷却内不再选这个槽")
     ap.add_argument("--skill-slot-cool", type=float, default=6.0,
                     help="同一个技能槽的最短重复间隔（秒，默认 6.0）；四槽都冷却时这一拍不放技能")
     ap.add_argument("--forage-always-attack", action="store_true",
@@ -1586,7 +1589,7 @@ def main():
         f"{i}={_ROLE_CN.get(_ROLES_TUPLE[i-1], _ROLES_TUPLE[i-1])}→键{_KEYMAP[i]}"
         for i in range(1, 5)))
     print(f"  回血阈值：血 < {args.heal_hp*100:.0f}% 触发回血槽（--heal-hp 可调）"
-          f" · 每槽各自冷却 {args.skill_slot_cool:.1f}s（--skill-slot-cool）"
+          f" · 每槽冷却 {args.skill_slot_cool:.1f}s（回血槽 {args.heal_cool:.0f}s）"
           f" · 技能间隔 ≥{max(args.skill_interval, args.skill_min_gap):.2f}s"
           "（血读不到时用 ONNX「血危」标签兜底）")
     print(f"  大招键序列：{args.key_ult}（轮换）")
@@ -2492,9 +2495,33 @@ def main():
                                             1 for _v in (st_onnx.get("hp_danger") or [])
                                             if _v)
                                     _st = fod.setdefault("slot_t", {})
-                                    _blk = {_j + 1 for _j in range(4)
-                                           if ts - _st.get(_j + 1, -99.0)
-                                              < float(args.skill_slot_cool)}
+                                    # ★ 冷却按**角色**区分：回血槽按一次等 60s，
+                                    #   其它槽按 skill_slot_cool（回血不是连按）。
+                                    _blk = set()
+                                    # 血量判定（和 mb_learn 里同一套口径）
+                                    _hpv = fod.get("auto_hp")
+                                    try:
+                                        _hpv = float(_hpv)
+                                        _hp_ok = (_hpv == _hpv)
+                                    except (TypeError, ValueError):
+                                        _hpv, _hp_ok = 0.0, False
+                                    _low_hp = ((_hp_ok and _hpv < float(args.heal_hp))
+                                               or bool(_hp_danger))
+                                    for _j in range(4):
+                                        _sn = _j + 1
+                                        _role = _ROLES_TUPLE[_j]
+                                        # 「不用」的槽永远不按；回血槽只在低血时才可选
+                                        if _role in (None, "none"):
+                                            _blk.add(_sn)
+                                            continue
+                                        if _role == "heal" and not _low_hp:
+                                            _blk.add(_sn)
+                                            continue
+                                        _cd = (float(args.heal_cool)
+                                               if _role == "heal"
+                                               else float(args.skill_slot_cool))
+                                        if ts - _st.get(_sn, -99.0) < _cd:
+                                            _blk.add(_sn)
                                     _slot = select_skill(
                                         _m.group_scores(r), fod["hg"].h,
                                         fod.get("auto_hp"),
