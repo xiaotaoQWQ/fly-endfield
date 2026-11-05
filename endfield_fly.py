@@ -2444,19 +2444,30 @@ def main():
                 #    用**英文大写**（用户要求）：W A S D SPACE SHIFT
                 #    LMB RMB SK1..SK4 ULT1..ULT4 E
                 pressed_keys = []
+                _cm_skill_pressed = False
                 if combat_on and ex is not None and cm["ready"]:
                     if cm["attack"]:
                         ex.combat_press(args.attack_key)
                         pressed_keys.append("LMB" if "mouse" in str(args.attack_key)
                                             else str(args.attack_key).upper())
                     if cm["skill"]:
-                        ex.combat_press(args.skill_key)
-                        pressed_keys.append("SK" + str(args.skill_key))
+                        # ★★★ 2026-11-01 找到「连着 3 拍按 SK1」的元凶：
+                        #   这里是**第二条技能路径** —— 果蝇逼近回路 cm[skill] 每拍都可能亮，
+                        #   而且按的是固定的 args.skill_key（默认 1），**完全绕过**轮换/冷却/5秒闸。
+                        #   --skill-auto 时技能统一走轮换通道，这里就不再按技能键。
+                        if not args.skill_auto:
+                            _since2 = ts - float((fod or {}).get("last_skill") or 0.0)
+                            if _since2 >= float(args.skill_global_gap):
+                                ex.combat_press(args.skill_key)
+                                pressed_keys.append("SK" + str(args.skill_key))
+                                if fod is not None:
+                                    fod["last_skill"] = ts
+                                _cm_skill_pressed = True
                 if combat_on:
                     # 中文不再混进指令列表 —— 改用英文短标签
                     if cm["attack"]:
                         action_txt += "  ATK"
-                    if cm["skill"]:
+                    if _cm_skill_pressed:
                         action_txt += "  SKL"
 
                 # ---- 觅食闭环：攻击 + 手动奖赏/惩罚键 ----
