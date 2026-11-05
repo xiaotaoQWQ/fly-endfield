@@ -406,6 +406,11 @@ def main():
                     help="技能按压的最小间隔（秒，默认 0.8）")
     # ★ 每个技能槽**各自的冷却**：刚按过的槽 N 秒内不再选（游戏里技能各有 CD）。
     #   没有这条时，「只会按 SK1」是必然的 —— 主攻底盘最高，argmax 永远选它。
+    # ★ 同一个槽不许连用：上次按的那个槽 N 秒内不再选。
+    #   只做「每槽各自冷却」时，底盘最高的槽仍会占掉一半按下次数；
+    #   加这条才能真的 1-2-3-4 轮。
+    ap.add_argument("--skill-repeat-block", type=float, default=10.0,
+                    help="上次按过的槽多少秒内不再选（默认 10）")
     ap.add_argument("--heal-cool", type=float, default=60.0,
                     help="回血槽按一次后冷却多久（秒，默认 60）。回血不是连按 —— "
                          "按一次等它生效，冷却内不再选这个槽")
@@ -2522,13 +2527,21 @@ def main():
                                                else float(args.skill_slot_cool))
                                         if ts - _st.get(_sn, -99.0) < _cd:
                                             _blk.add(_sn)
+                                            continue
+                                        if (_sn == fod.get("last_slot_no") and
+                                                ts - fod.get("last_slot_t", -99.0)
+                                                < float(args.skill_repeat_block)):
+                                            _blk.add(_sn)
+                                            _blk.add(_sn)
                                     _slot = select_skill(
                                         _m.group_scores(r), fod["hg"].h,
                                         fod.get("auto_hp"),
                                         ts - fod["combat_t0"],
                                         heal_hp=args.heal_hp,
                                         roles=_ROLES_TUPLE, blocked=_blk,
-                                        hp_low_hint=_hp_danger)
+                                        hp_low_hint=_hp_danger,
+                                        last_times=_st,
+                                        rotate=True)
                                     # ★ 返回的是**槽号**（1..4），不是键 ——
                                     #   键由 --key-skillN 决定。这样哪个槽什么含义
                                     #   和按哪个键是两件独立可配的事。
@@ -2543,6 +2556,8 @@ def main():
                                 fod["n_skill"] += 1
                                 if _slot:
                                     fod.setdefault("slot_t", {})[_slot] = ts
+                                    fod["last_slot_no"] = _slot
+                                    fod["last_slot_t"] = ts
                                 if args.skill_auto:
                                     _gs = _m.group_scores(r)
                                     _hps = fod.get("auto_hp")
@@ -2551,7 +2566,8 @@ def main():
                                     print(f"  [{ts:6.1f}s] ★ 技能 {_sk}"
                                           f"  （h={fod['hg'].h:.2f} 血={_hps} "
                                           f"战线={ts - fod['combat_t0']:.1f}s "
-                                          f"分区={np.round(_gs, 1)}）")
+                                          f"分区={np.round(_gs, 1)} "
+                                          f"槽={_slot} 冷却中={sorted(_blk)}）")
                             # ★★ 大招：长按 1/2/3/4，**久攻不下、饿到极点**时放。
                             #   好玩的地方：战斗越久 = 越饿（没吃到东西时饥饿值一直
                             #   在回升），所以"久攻不下"和"极度饥饿"对果蝇来说是同一

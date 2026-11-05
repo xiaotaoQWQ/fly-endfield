@@ -459,7 +459,8 @@ def innate_priority(h: float, hp, combat_age: float,
 
 def select_skill(gscores: np.ndarray, h: float, hp, combat_age: float,
                  learn_gain: float = 0.30, heal_hp: float = 0.5,
-                 roles=None, blocked=None, hp_low_hint: bool = False) -> int:
+                 roles=None, blocked=None, hp_low_hint: bool = False,
+                 last_times=None, rotate: bool = True) -> int:
     """先天优先级 + 学习微调 → 选一个技能（返回 1..4）。
 
     `gscores` 是蘑菇体四个分区的输出（见 MushroomBodyLearner.group_scores）。
@@ -485,4 +486,13 @@ def select_skill(gscores: np.ndarray, h: float, hp, combat_age: float,
                 p[int(_b) - 1] = -1e9
         if float(np.max(p)) <= -1e8:
             return 0
+    # ★★ 2026-11-01：**轮转优先**（LRU）。
+    #   只按 argmax 时，底盘最高的槽（主攻/削弱）会一直压着别的槽，
+    #   实测「战斗过程几乎全在按 S1」。改成：在所有**可用且优先级 > 0** 的槽里，
+    #   挑**最久没按过**的那个 —— 保证 1-2-3-4 真的轮起来。
+    if rotate and last_times is not None:
+        cand = [i for i in range(4) if float(p[i]) > 0.0]
+        if cand:
+            cand.sort(key=lambda i: float(last_times.get(i + 1, -1e18)))
+            return int(cand[0]) + 1
     return int(np.argmax(p)) + 1
