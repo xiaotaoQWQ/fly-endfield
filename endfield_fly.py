@@ -2547,6 +2547,19 @@ def main():
                                     #   和按哪个键是两件独立可配的事。
                                     # 0 = 四个槽都在冷却 → 这一拍不放技能
                                     _sk = (_KEYMAP.get(_slot, args.skill_key) if _slot else None)
+                                    # ★★ 硬保险（2026-11-01）：不管上游怎么选，
+                                    #   同一个槽在 repeat_block 秒内绝不重复按。
+                                    #   用户实测「一次连按三四次 S1」——上层冷却没兜住，
+                                    #   这里直接拦死，并把拦截原因打出来。
+                                    if (_sk is not None and _slot
+                                            and fod.get("last_slot_no") == _slot
+                                            and ts - fod.get("last_slot_t", -99.0)
+                                            < float(args.skill_repeat_block)):
+                                        _gap = ts - fod.get("last_slot_t", 0.0)
+                                        print(f"  [{ts:6.1f}s] · 技能槽{_slot} 还在冷却"
+                                              f"（{_gap:.1f}s 前按过），跳过这一拍",
+                                              flush=True)
+                                        _sk = None
                                 elif fod["hg"].h >= args.skill_hunger:
                                     _sk = args.skill_key
                             if _sk is not None:
