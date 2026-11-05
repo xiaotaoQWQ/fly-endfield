@@ -402,6 +402,10 @@ def main():
                     help="战技的最小间隔秒数（默认 4.0）。战技有冷却，狂按只会空转")
     # ★ 技能「地板间隔」：即使 skill_interval 调到 0，也不会每拍都按 ——
     #   游戏本身有技能冷却，按得更快只是白按 + 日志刷屏（实测「后期疯狂按技能1」）。
+    # ★★ 全局技能闸（2026-11-01）：按过任何一个技能键后 N 秒内，
+    #   不再按任何技能键（回血除外 —— 保命不排队）。
+    ap.add_argument("--skill-global-gap", type=float, default=5.0,
+                    help="任意两次技能之间的最小间隔（秒，默认 5；回血不受限）")
     ap.add_argument("--skill-min-gap", type=float, default=0.8,
                     help="技能按压的最小间隔（秒，默认 0.8）")
     # ★ 每个技能槽**各自的冷却**：刚按过的槽 N 秒内不再选（游戏里技能各有 CD）。
@@ -2563,6 +2567,17 @@ def main():
                                 elif fod["hg"].h >= args.skill_hunger:
                                     _sk = args.skill_key
                             if _sk is not None:
+                                # ★★ 全局技能闸：回血除外，其余 5 秒内不许再按
+                                _is_heal = bool(_slot and 0 < _slot <= 4
+                                                and _ROLES_TUPLE[_slot - 1] == "heal")
+                                _since = ts - float(fod.get("last_skill") or 0.0)
+                                if (not _is_heal
+                                        and _since < float(args.skill_global_gap)):
+                                    print(f"  [{ts:6.1f}s] · 技能闸：{_since:.1f}s 前刚按过"
+                                          f"（<{args.skill_global_gap:.0f}s），这一拍不按",
+                                          flush=True)
+                                    _sk = None
+                            if _sk is not None:
                                 ex.combat_press(str(_sk))
                                 pressed_keys.append(f"SK{_sk}")
                                 fod["last_skill"] = ts
@@ -2610,8 +2625,13 @@ def main():
                                 else:
                                     _hpok = (bool(fod.get("onnx_ok"))
                                              and fod.get("onnx_hp_danger") == 0)
+                                # ★ 大招键和技能键是**同一组键**（1/2/3/4），
+                                #   刚按过技能就别马上压大招，否则游戏里看着就是「连按」。
+                                _ult_gap_ok = (ts - float(fod.get("last_skill") or 0.0)
+                                               >= 1.5)
                                 if (f_atk and fod["hg"].h >= args.ult_hunger
                                         and _age >= args.ult_age and _hpok
+                                        and _ult_gap_ok
                                         and ts - fod["last_ult"] >= args.ult_cool):
                                     # ★★ 大招键 **1→2→3→4 轮换**。
                                     #
