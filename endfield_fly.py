@@ -361,6 +361,20 @@ def main():
     ap.add_argument("--dodge-key", default="shift",
                     help="闪避键（默认 shift）。★ 如果实机看不到角色闪避，先用它试 space")
     # 2026-11-01: dodge presses space + shift together, then locks keys 1.2s
+    # ★★ 2026-11-01：格挡（技能类型）。危险 / 检测器看到威胁 + 有技力 → 按格挡键。
+    #   技力用 MaaEnd 模型的 EnergyLevelFull / EnergyLevelEmpty 两个标签判（0空 1中 2满）。
+    ap.add_argument("--block", action="store_true",
+                    help="开启格挡：果蝇觉得危险或检测器报威胁、且技力够 → 按格挡键")
+    ap.add_argument("--key-block", default="q",
+                    help="格挡键（默认 q；按你游戏里的键位改）")
+    ap.add_argument("--block-z", type=float, default=1.0,
+                    help="主视角 looming z 超过多少算‘果蝇觉得危险’（默认 1.0）")
+    ap.add_argument("--block-threat", type=float, default=0.15,
+                    help="ONNX 威胁标签分数阈值（默认 0.15）")
+    ap.add_argument("--block-energy-min", type=int, default=1,
+                    help="技力至少到哪档才格挡：0=空 1=中 2=满（默认 1）")
+    ap.add_argument("--block-cool", type=float, default=5.0,
+                    help="两次格挡最小间隔（秒，默认 5）")
     ap.add_argument("--dodge-key2", default="space",
                     help="第二闪避键（默认 space；留空=只按 --dodge-key）")
     ap.add_argument("--dodge-lock", type=float, default=1.2,
@@ -2369,6 +2383,28 @@ def main():
                                   f"第 {forager['n_dodge']} 次")
                         forager["flash_armed"] = _f_now
 
+                # ---- 格挡：果蝇觉得危险 / 检测器报威胁，且**有技力** → 按格挡键 ----
+                #   技力来源：MaaEnd 模型的 EnergyLevelFull / EnergyLevelEmpty
+                #     energy = 2 满 / 1 中（既没满也没空）/ 0 空
+                if (args.block and ex is not None and forager is not None
+                        and m_on
+                        and ts - forager.get("last_block", -99.0) >= args.block_cool):
+                    _bz = float(cm.get("z_s") or 0.0) if cm.get("ready") else 0.0
+                    _bth = float(forager.get("threat_max") or 0.0)
+                    _bdet = bool(st_onnx and st_onnx.get("enemy_attack"))
+                    _danger = (_bz >= float(args.block_z) or _bdet
+                               or _bth >= float(args.block_threat))
+                    _en = int((st_onnx or {}).get("energy", 1)) if st_onnx else 1
+                    forager["energy"] = _en
+                    _en_ok = _en >= int(args.block_energy_min)
+                    if _danger and _en_ok:
+                        ex.combat_press(str(args.key_block))
+                        pressed_keys.append("BLK")
+                        forager["last_block"] = ts
+                        forager["n_block"] = forager.get("n_block", 0) + 1
+                        _nb = forager["n_block"]
+                        print(f"  [{ts:6.1f}s] ★ 格挡 ← z={_bz:+.2f} 威胁{_bth:.2f} "
+                              f"技力{_en}/2 第 {_nb} 次", flush=True)
                 # ★ 标定用：战斗中每 10 秒打一行 looming z（暂停/中断也能拿到分布）
                 if (forager is not None and m_on and cm.get("ready")
                         and ts - forager.get("z_log_t", -99.0) >= 10.0):

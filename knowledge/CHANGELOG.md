@@ -14,6 +14,32 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-11-01 · 新增「格挡」技能类型（危险 + 有技力 → 按格挡键）
+
+**需求**：果蝇觉得危险、或检查器看到威胁标识时，**在有技力的情况下**按格挡键。
+技力用 MaaEnd 模型里的词条判。
+
+**技力来源**（onnx_detect.py 已有，本轮直接用）：
+```
+EnergyLevelFull  → energy = 2（满）
+EnergyLevelEmpty → energy = 0（空）
+两个标签都没有   → energy = 1（中）
+```
+
+**改哪**（endfield_fly.py）：
+- 新参数：`--block` / `--key-block`(默认 q) / `--block-z`(1.0) / `--block-threat`(0.15) /
+  `--block-energy-min`(1=技力至少要"中") / `--block-cool`(5s)
+- 触发条件（三选一，且技力达标）：
+  ① `cm["z_s"] >= --block-z` —— 果蝇主视角 looming（它自己觉得危险）
+  ② `st_onnx["enemy_attack"]` —— 检测器报威胁标签
+  ③ `threat_max >= --block-threat` —— 威胁原始分过线
+- 按下时走 `ex.combat_press(--key-block)`，因此**自动受闪避锁键闸门约束**（闪避 1.2s 内不会格挡）
+- 计数 `n_block` 记进 forager；日志：`★ 格挡 ← z=+1.24 威胁0.21 技力2/2 第 1 次`
+- `--role-N block` 本来就支持（先天优先级里 block 已存在），可用于轮换槽
+- `start_cc.cmd`：`--block --key-block q --block-cool 5`（**q 是占位，按你游戏键位改**）
+
+---
+
 ## 2026-11-01 · 闪避锁定期语义确认 + 锁定期内禁止再次闪避
 
 **语义（用户明确）**：触发闪避（空格+Shift）后的 1.2 秒内 ——
