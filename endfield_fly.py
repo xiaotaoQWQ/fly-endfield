@@ -390,6 +390,12 @@ def main():
                     help="连续技第二段的间隔（秒，默认 5；0=关）")
     ap.add_argument("--heal-every", type=float, default=0.0,
                     help="每 N 秒强制按一次回血键（默认 0=关；建议 61）")
+    ap.add_argument("--heal-on-energy", action="store_true", default=True,
+                    help="按技力状态判断回血技能是否结束（默认开）")
+    ap.add_argument("--heal-min-gap", type=float, default=55.0,
+                    help="两次回血的最小间隔（秒，默认 55 —— 技能持续约 60s）")
+    ap.add_argument("--heal-guard", type=float, default=5.0,
+                    help="两次回血按压的最小间隔（秒，默认 5）")
     ap.add_argument("--heal-key", default="",
                     help="回血键；留空则自动取 role==heal 那个槽的键")
     ap.add_argument("--block-hold", type=float, default=1.5,
@@ -2712,18 +2718,25 @@ def main():
                 #    实时指令列表要靠它显示"这一拍到底按了什么"。
                 #    用**英文大写**（用户要求）：W A S D SPACE SHIFT
                 #    LMB RMB SK1..SK4 ULT1..ULT4 E
-                # ---- 定时回血：每 --heal-every 秒强制按一次回血键（不看血量）----
+                # ---- 回血：按技能状态触发（不看血量、不插队）----
+                #   60 秒持续范围技能；energy=2(满) 说明技能已结束 → 补一个
                 if (args.heal_every and args.heal_every > 0 and ex is not None
-                        and forager is not None and m_on and combat_on
-                        and ts - forager.get("last_heal_t", -99.0)
-                        >= float(args.heal_every)):
-                    ex.combat_press(str(_HEAL_KEY))
-                    pressed_keys.append("HEAL")
-                    forager["last_heal_t"] = ts
-                    forager["n_heal"] = forager.get("n_heal", 0) + 1
-                    _nh = forager["n_heal"]
-                    print(f"  [{ts:6.1f}s] ★ 定时回血 → 键 {_HEAL_KEY}"
-                          f"（每 {args.heal_every:.0f}s 一次，第 {_nh} 次）", flush=True)
+                        and forager is not None and m_on and combat_on):
+                    _en_h = int((st_onnx or {}).get("energy", 1)) if st_onnx else 1
+                    _since_h = ts - forager.get("last_heal_t", -99.0)
+                    _guard = max(float(getattr(args, "heal_guard", 5.0) or 5.0),
+                                   float(getattr(args, "heal_min_gap", 55.0) or 55.0))
+                    _hfull = (not args.heal_on_energy) or _en_h >= 2
+                    _hfall = _since_h >= float(args.heal_every)
+                    if (_hfull and _since_h >= _guard) or _hfall:
+                        ex.combat_press(str(_HEAL_KEY))
+                        pressed_keys.append("HEAL")
+                        forager["last_heal_t"] = ts
+                        forager["n_heal"] = forager.get("n_heal", 0) + 1
+                        _nh = forager["n_heal"]
+                        _why = "技力满/技能已结束" if _hfull else "兜底计时"
+                        print(f"  [{ts:6.1f}s] ★ 回血 → 键 {_HEAL_KEY}"
+                              f"（{_why}，第 {_nh} 次）", flush=True)
 
                 _cm_skill_pressed = False
                 if combat_on and ex is not None and cm["ready"]:
