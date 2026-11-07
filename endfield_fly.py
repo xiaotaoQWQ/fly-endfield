@@ -389,6 +389,8 @@ def main():
                     help="闪避后锁键秒数（默认 1.2，期间一个键都不发）")
     ap.add_argument("--dodge-tap", type=float, default=0.12,
                     help="闪避键按压时长（秒，默认 0.12）。原来是 0.05 —— 太短，游戏可能只当成松开了冲刺")
+    ap.add_argument("--attack-every", type=float, default=0.0,
+                    help="战斗中强制攻击的最小间隔（秒，0=关；建议 0.5~0.8）")
     ap.add_argument("--attack-hold", type=float, default=1.0,
                     help="★ 普攻按住多少秒（默认 1.0）。改长按后时长超过决策拍"
                          "（400ms），所以按下/抬起落在**不同的拍**上 —— "
@@ -2654,6 +2656,12 @@ def main():
                 pressed_keys = []
                 _cm_skill_pressed = False
                 if combat_on and ex is not None and cm["ready"]:
+                    _ae = float(getattr(args, "attack_every", 0.0) or 0.0)
+                    _force_atk = bool(_ae > 0 and m_on and forager is not None
+                                       and ts - forager.get("last_atk_t", -99.0) >= _ae)
+                    if _force_atk:
+                        ex.combat_press(args.attack_key)
+                        forager["last_atk_t"] = ts
                     if cm["attack"]:
                         ex.combat_press(args.attack_key)
                         pressed_keys.append("LMB" if "mouse" in str(args.attack_key)
