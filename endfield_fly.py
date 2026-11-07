@@ -365,14 +365,16 @@ def main():
     #   技力用 MaaEnd 模型的 EnergyLevelFull / EnergyLevelEmpty 两个标签判（0空 1中 2满）。
     ap.add_argument("--block", action="store_true",
                     help="开启格挡：果蝇觉得危险或检测器报威胁、且技力够 → 按格挡键")
-    ap.add_argument("--key-block", default="q",
-                    help="格挡键（默认 q；按你游戏里的键位改）")
+    ap.add_argument("--key-block", default="4",
+                    help="格挡键 —— 就是技能键 1/2/3/4 里的那个（默认 4，按你干员位置改）")
     ap.add_argument("--block-z", type=float, default=1.0,
                     help="主视角 looming z 超过多少算‘果蝇觉得危险’（默认 1.0）")
     ap.add_argument("--block-threat", type=float, default=0.15,
                     help="ONNX 威胁标签分数阈值（默认 0.15）")
     ap.add_argument("--block-energy-min", type=int, default=1,
                     help="技力至少到哪档才格挡：0=空 1=中 2=满（默认 1）")
+    ap.add_argument("--block-hold", type=float, default=1.5,
+                    help="格挡后多少秒内不闪避（默认 1.5）")
     ap.add_argument("--block-cool", type=float, default=5.0,
                     help="两次格挡最小间隔（秒，默认 5）")
     ap.add_argument("--dodge-key2", default="space",
@@ -1949,7 +1951,10 @@ def main():
                 if (args.dodge and not args.no_dodge and ex is not None
                         and args.dodge_src in ("onnx", "both")
                         and forager is not None
-                        and st_onnx is not None and st_onnx.get("ok")):
+                        and st_onnx is not None and st_onnx.get("ok")
+                        and not (forager.get("last_block") is not None
+                                 and ts - forager["last_block"]
+                                 < float(args.block_hold))):
                     _oa = bool(st_onnx.get("enemy_attack"))
                     # ★ 主判据：**上升沿**触发（不会一直按住），并记录"主判据刚动过"
                     if (_oa and not forager.get("dodge_onnx_armed", False)
@@ -2067,6 +2072,21 @@ def main():
                 m_on_raw = m_evac or m_red      # 真实判定（打死/结算要用它）
                 # ★ 纯战斗场景：门直接常开（--always-combat）
                 m_on = True if args.always_combat else m_on_raw
+                # 2026-11-01: 格挡优先于闪避 —— 先算这一拍要不要格挡
+                _block_soon = False
+                if (args.block and forager is not None and m_on
+                        and ts - forager.get("last_block", -99.0) >= float(args.block_cool)):
+                    _ben = int((st_onnx or {}).get("energy", 1)) if st_onnx else 1
+                    _bready = _ben >= int(args.block_energy_min)
+                    _bdanger = (bool(st_onnx and st_onnx.get("enemy_attack"))
+                                or float(forager.get("threat_max") or 0.0)
+                                >= float(args.block_threat)
+                                or float(forager.get("z_s_last") or 0.0)
+                                >= float(args.block_z))
+                    _block_soon = bool(_bready and _bdanger)
+                _block_hold_ok = (ts - forager.get("last_block", -99.0)
+                                  >= float(args.block_hold)) if forager is not None else True
+                _no_dodge = bool(_block_soon or not _block_hold_ok)
                 # ★ 把判定结果存进 forager，让状态面板能显示 —— 这两个变量是
                 #   循环局部的，状态回调在别的线程里读不到，必须显式传出去。
                 if forager is not None:
@@ -2305,6 +2325,8 @@ def main():
                 # （红环扫描已在循环开头做过，这里直接用 m_on）
                 cm = cdec.step(r, dt=1.0 / args.hz, now=ts,
                                  combat=(combat_on and m_on))
+                if forager is not None:
+                    forager["z_s_last"] = float(cm.get("z_s") or 0.0)
 
                 # ---- 闪避 · 主视角（果蝇自己的逼近回路）----
                 # ★★ 2026-10-31：用户要求「换成识别主视角的闪避」。
@@ -2324,6 +2346,7 @@ def main():
                 if (args.dodge and not args.no_dodge and ex is not None
                         and forager is not None
                         and args.dodge_src in ("cortex", "both")
+                        and not _no_dodge
                         and _aux_ok
                         and cm.get("ready") and m_on):
                     _zs = float(cm.get("z_s") or 0.0)
@@ -2357,6 +2380,7 @@ def main():
                         and forager is not None and args.dodge_flash
                         and not args.no_dodge_flash
                         and args.dodge_src in ("cortex", "both")
+                        and not _no_dodge
                         and _aux_ok
                         and lf.img is not None):
                     _frc = forager.get("flash_rect")
