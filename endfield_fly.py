@@ -246,6 +246,12 @@ def main():
                          "--combat-sustain-z），我们只定节奏")
     ap.add_argument("--combat-sustain-z", type=float, default=0.3,
                     help="持续攻击的闸门 z（默认 0.3 ≈ 62 分位）。调高=更挑，调低=更凶")
+    # ★★ 2026-11-01：战斗里「打两下就跑」—— 用户要求打得更凶。
+    #   开这个之后：战斗中**强制向前、不许后退**，一直贴着打。
+    ap.add_argument("--enemy-lock", action="store_true",
+                    help="用 ONNX 的敌人框自动转向：敌人偏右就往右转，偏左就往左转")
+    ap.add_argument("--combat-forward", action="store_true",
+                    help="战斗中强制向前（不许按 S 后退），保持贴身输出")
     ap.add_argument("--combat-yield", choices=["none", "attack"], default="none",
                     help="攻击时方向控制是否让位（交接文档 §二.2 要求提前决定）。"
                          "none=不让位，果蝇的方向控制保持生效（默认，因为本项目"
@@ -1953,6 +1959,20 @@ def main():
                         forager["threat_max"] = float(
                             st_onnx.get("threat_max") or 0.0)
 
+                # ★ 敌人横向位置（归一化 0~1）—— --enemy-lock 用它转向
+                if (forager is not None and st_onnx is not None
+                        and st_onnx.get("ok") and lf.img is not None):
+                    _fw = max(1, int(lf.img.shape[1]))
+                    _ens = [d for d in (st_onnx.get("dets") or [])
+                            if str(d.get("label", "")).startswith("Enemy")]
+                    if _ens:
+                        _bv = min(_ens, key=lambda d: abs(
+                            (float(d["box"][0]) + float(d["box"][2])) / 2.0 / _fw - 0.5))
+                        forager["tgt_x"] = round(
+                            (float(_bv["box"][0]) + float(_bv["box"][2])) / 2.0 / _fw, 3)
+                    else:
+                        forager["tgt_x"] = None
+
                 # ---- 闪避（Shift 点一下）----
                 # 威胁来源：ONNX 的三个预警标签（Charging / AccumulatingPower /
                 # GroundDodge）。实测录制上几乎不亮，但要先接上跑实机看数据 ——
@@ -2566,24 +2586,39 @@ def main():
                         jump = ((not args.no_jump) and bool(acts["jump"])
                                 and not (m_on and not args.jump_in_combat))
                         sprint = (not args.no_sprint) and bool(acts["sprint"])
+                        # ★ 战斗中强制向前（--combat-forward）：不后退，贴着打
+                        _kw, _ks = pm["key_w"], pm["key_s"]
+                        if args.combat_forward and m_on and combat_on:
+                            _kw, _ks = True, False
+                        # ★★ 敌人锁定转向：用 ONNX 的敌人框把镜头拉回敌人
+                        _tgt = forager.get("tgt_x") if forager is not None else None
+                        if (args.enemy_lock and m_on and combat_on
+                                and _tgt is not None):
+                            _kw, _ks = True, False
+                            if _tgt > 0.56:
+                                turn = 1
+                                turn_dx = int(min(70, (_tgt - 0.5) * 140))
+                            elif _tgt < 0.44:
+                                turn = -1
+                                turn_dx = -int(min(70, (0.5 - _tgt) * 140))
                         if ex is not None:
                             if yield_dir:
                                 # §二.2 决定：攻击时方向控制**让位**（交给游戏自动寻路）
                                 ex.release_movement()
                             else:
-                                ex.apply_raw(pm["key_w"], pm["key_s"],
+                                ex.apply_raw(_kw, _ks,
                                              pm["key_a"], pm["key_d"],
                                              turn_dx, jump=jump, sprint=sprint)
-                        keys = "".join(k for k, on in (("W", pm["key_w"]),
+                        keys = "".join(k for k, on in (("W", _kw),
                                                        ("A", pm["key_a"]),
-                                                       ("S", pm["key_s"]),
+                                                       ("S", _ks),
                                                        ("D", pm["key_d"])) if on)
                         # ★ 按键**不写进动作文字** —— 面板上已经有专门的
                         #   按键徽标列了，写两遍反而乱（用户要求：按键要标出来，
                         #   但不是混在动作描述里）。这里只说做了什么。
                         action_txt = "MOVE" if keys else "IDLE"
                     plan = MotorPlan(
-                        move=(1 if pm["key_w"] else (-1 if pm["key_s"] else 0)),
+                        move=(1 if _kw else (-1 if _ks else 0)),
                         turn=turn,
                         # ★ 战斗状态下不许跳（用户要求）—— 和上面 apply_raw 那条同样的闸门
                         jump=(False if (args.no_jump or esc
