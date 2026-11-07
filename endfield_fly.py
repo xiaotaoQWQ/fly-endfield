@@ -2596,7 +2596,7 @@ def main():
                         _tgt = forager.get("tgt_x") if forager is not None else None
                         if (args.enemy_lock and m_on and combat_on
                                 and _tgt is not None):
-                            _kw, _ks = True, False
+                            # 只改**转向**，前进/后退仍由群体解码决定
                             if _tgt > 0.56:
                                 turn = 1
                                 turn_dx = int(min(70, (_tgt - 0.5) * 140))
