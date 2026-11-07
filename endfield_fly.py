@@ -360,6 +360,11 @@ def main():
                          "p90 17.5 / p99 49.3，取 40 约 1 个百分点的帧")
     ap.add_argument("--dodge-key", default="shift",
                     help="闪避键（默认 shift）。★ 如果实机看不到角色闪避，先用它试 space")
+    # 2026-11-01: dodge presses space + shift together, then locks keys 1.2s
+    ap.add_argument("--dodge-key2", default="space",
+                    help="第二闪避键（默认 space；留空=只按 --dodge-key）")
+    ap.add_argument("--dodge-lock", type=float, default=1.2,
+                    help="闪避后锁键秒数（默认 1.2，期间一个键都不发）")
     ap.add_argument("--dodge-tap", type=float, default=0.12,
                     help="闪避键按压时长（秒，默认 0.12）。原来是 0.05 —— 太短，游戏可能只当成松开了冲刺")
     ap.add_argument("--attack-hold", type=float, default=1.0,
@@ -1308,7 +1313,17 @@ def main():
                 ic.key_up("shift", kb)              # 冲刺状态（Shift）先松掉
                 # ★ 2026-10-31：50 ms 的 tap 太短 —— 技能键用 0.10 才稳定生效，
                 #   闪避沿用 50 ms 时游戏可能只当成"松开了冲刺"，角色根本没闪。
-                ic.tap(str(args.dodge_key), float(args.dodge_tap), kb)
+                # 2026-11-01: press space + shift TOGETHER
+                _k1 = str(args.dodge_key or "").strip()
+                _k2 = str(getattr(args, "dodge_key2", "") or "").strip()
+                if _k2 and _k2 != _k1:
+                    ic.key_down(_k1, kb)
+                    ic.key_down(_k2, kb)
+                    time.sleep(float(args.dodge_tap))
+                    ic.key_up(_k2, kb)
+                    ic.key_up(_k1, kb)
+                else:
+                    ic.tap(_k1, float(args.dodge_tap), kb)
 
             def combat_press(self, key: str):
                 """战斗键：做一次**阻塞式**点击。
@@ -1387,6 +1402,49 @@ def main():
                 return getattr(inner, name)
 
         ex = _TakeoverGate(ex)
+        class _DodgeGate:
+            """闪避后 N 秒内一个键都不发（闪避自己放行，松键也放行）。
+
+            为什么要包一层：出口有十来处（走路/普攻/技能/大招/连携/E），
+            在每个调用点加判断必漏；包一层能把所有出口一次堵死。
+            """
+            SEND = ("apply", "press", "hold", "click", "combat_", "mouse")
+
+            def __init__(self, inner, lock=1.2):
+                self._inner = inner
+                self.lock = float(lock)
+                self.until = 0.0
+                self.blocked = 0
+
+            @property
+            def active(self):
+                return time.time() < self.until
+
+            def dodge(self):
+                try:
+                    self._inner.release_all()
+                except Exception:
+                    pass
+                self.until = time.time() + self.lock
+                return self._inner.dodge()
+
+            def __getattr__(self, name):
+                inner = self._inner
+                if name.endswith("_up") or name.startswith("release"):
+                    return getattr(inner, name)
+                if name.startswith(self.SEND):
+                    def _gated(*a, **k):
+                        if self.active:
+                            self.blocked += 1
+                            return None
+                        return getattr(inner, name)(*a, **k)
+                    return _gated
+                return getattr(inner, name)
+
+        ex = _DodgeGate(ex, lock=float(args.dodge_lock))
+        print(f"  ★ 闪避锁键：闪避后 {args.dodge_lock:.1f}s 内一个键都不发"
+              f"（闪避键 {args.dodge_key} + {args.dodge_key2}）")
+
 
     # ---- 对照组：运动输出关掉 = 一个键都不按 ----
     # ★ 用**包装**而不是在每个调用点加判断：调用点有 10 来个，
