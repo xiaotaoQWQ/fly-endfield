@@ -1437,12 +1437,24 @@ def main():
             """
             SEND = ("apply", "press", "hold", "click", "combat_", "mouse")
 
+            _OWN = ("_inner", "lock", "until", "blocked", "moved")
+
             def __init__(self, inner, lock=1.2):
-                self._inner = inner
-                self.lock = float(lock)
-                self.until = 0.0
-                self.blocked = 0
-                self.moved = 0
+                object.__setattr__(self, "_inner", inner)
+                object.__setattr__(self, "lock", float(lock))
+                object.__setattr__(self, "until", 0.0)
+                object.__setattr__(self, "blocked", 0)
+                object.__setattr__(self, "moved", 0)
+
+            def __setattr__(self, name, value):
+                # ★★ 2026-11-01 修「HOME 失灵」：
+                #   接管开关写的是 `ex.on = True`，但 ex 现在被 _DodgeGate 包着；
+                #   不转发的话这个赋值只落在包装层上，**里面的接管闸门永远收不到**，
+                #   于是按 HOME 明明切换了，果蝇还在按键。
+                if name in self._OWN or name.startswith("_"):
+                    object.__setattr__(self, name, value)
+                else:
+                    setattr(self._inner, name, value)
 
             @property
             def active(self):
