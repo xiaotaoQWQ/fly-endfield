@@ -1433,6 +1433,10 @@ def main():
                 return time.time() < self.until
 
             def dodge(self):
+                # ★ 锁定期内**不再闪避**：闪避本身也是按键，重复触发会打断动作
+                if self.active:
+                    self.blocked += 1
+                    return None
                 try:
                     self._inner.release_all()
                 except Exception:
