@@ -14,6 +14,21 @@
 ---
 
 ## 2026-10-30 · 本轮工作报告
+## 2026-11-01 · 闪避锁定期「可以按 WASD」
+
+**为什么**：用户补充「可以按 wasd」。闪避锁 1.2 秒里完全不动会脱离方向，
+而且游戏里闪避方向本来就吃移动输入。
+
+**改哪**：
+- `EFExec.apply_move_only(plan, turn_dx)`：**只同步方向键 + 鼠标转视角**，
+  强制 `sprint=False`、不跳（冲刺是 Shift，锁定期按 Shift 会打断闪避）
+- `_DodgeGate`：锁定期里 `apply` 降级为 `apply_move_only`；
+  `apply_raw` 则把 sprint/jump 关键字强制置 False 后透传
+- 其余发送类（combat_press / combat_hold / mouse / press / click）照旧全拦
+- 启动打印改成「锁定期只允许 WASD（不冲刺/不跳/不攻击）」
+
+---
+
 ## 2026-11-01 · 闪避改「空格+Shift 同时按」+ 闪避后锁键 1.2 秒
 
 **为什么**：合约环境里单按 Shift 闪避不稳，用户要求**空格和 Shift 一起按**；

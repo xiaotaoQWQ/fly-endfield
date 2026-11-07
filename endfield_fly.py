@@ -1269,6 +1269,17 @@ def main():
                 if plan.jump:
                     ic.tap("space", 0.09, kb)
 
+            def apply_move_only(self, plan, turn_dx):
+                """只有方向（WASD + 鼠标转），不冲刺、不跳、不攻击。
+
+                ★ 闪避锁定期专用：用户要求「闪避期间可以按 WASD」。
+                  冲刺也是 Shift —— 锁定期按 Shift 会打断闪避，所以必须排除。
+                """
+                self._sync("forward", plan.move > 0)
+                self._sync("back", plan.move < 0)
+                self._sync("sprint", False)
+                if turn_dx and ms:
+                    ic.mouse_move(int(turn_dx), 0, ms)
             def apply_raw(self, fwd=False, back=False, left=False, right=False,
                           turn_dx=0, jump=False, sprint=False):
                 """群体解码口径：直接给六个键的状态 + 鼠标位移。"""
@@ -1415,6 +1426,7 @@ def main():
                 self.lock = float(lock)
                 self.until = 0.0
                 self.blocked = 0
+                self.moved = 0
 
             @property
             def active(self):
@@ -1432,6 +1444,23 @@ def main():
                 inner = self._inner
                 if name.endswith("_up") or name.startswith("release"):
                     return getattr(inner, name)
+                if name == "apply":
+                    # ★ 闪避锁定期：只走方向，不冲刺/不跳/不攻击
+                    def _move_only(*a, **k):
+                        if self.active:
+                            self.moved += 1
+                            fn = getattr(inner, "apply_move_only", None)
+                            return fn(*a, **k) if fn else None
+                        return inner.apply(*a, **k)
+                    return _move_only
+                if name == "apply_raw":
+                    def _raw_gated(*a, **k):
+                        if self.active:
+                            self.moved += 1
+                            k["sprint"] = False
+                            k["jump"] = False
+                        return inner.apply_raw(*a, **k)
+                    return _raw_gated
                 if name.startswith(self.SEND):
                     def _gated(*a, **k):
                         if self.active:
@@ -1442,7 +1471,7 @@ def main():
                 return getattr(inner, name)
 
         ex = _DodgeGate(ex, lock=float(args.dodge_lock))
-        print(f"  ★ 闪避锁键：闪避后 {args.dodge_lock:.1f}s 内一个键都不发"
+        print(f"  ★ 闪避锁键：闪避后 {args.dodge_lock:.1f}s 内只允许 WASD（不冲刺/不跳/不攻击）"
               f"（闪避键 {args.dodge_key} + {args.dodge_key2}）")
 
 
