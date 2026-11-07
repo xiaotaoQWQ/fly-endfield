@@ -2821,10 +2821,9 @@ def main():
                                         _sn = _j + 1
                                         _role = _ROLES_TUPLE[_j]
                                         # 「不用」的槽永远不按；回血槽只在低血时才可选
-                                        if _role in (None, "none"):
-                                            _blk.add(_sn)
-                                            continue
-                                        if _role == "heal" and not _low_hp:
+                                        # ★★ 2026-11-01：轮转只在 attack / gather 之间选；
+                                        #   heal 由定时回血通道管，block 由危险格挡通道管。
+                                        if _role in (None, "none", "heal", "block"):
                                             _blk.add(_sn)
                                             continue
                                         _cd = (float(args.heal_cool)
