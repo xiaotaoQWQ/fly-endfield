@@ -1,0 +1,5 @@
+    _HEAL_SLOT = next((i + 1 for i, _r in enumerate(_ROLES_TUPLE)
+                      if _r == "heal"), 0)
+    _HEAL_KEY = (str(args.heal_key) if str(args.heal_key or "").strip()
+                 else (str(getattr(args, f"key_skill{_HEAL_SLOT}"))
+                       if _HEAL_SLOT else str(args.skill_key)))

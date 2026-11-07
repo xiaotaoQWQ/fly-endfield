@@ -375,10 +375,18 @@ def main():
                     help="格挡键 —— 就是技能键 1/2/3/4 里的那个（默认 4，按你干员位置改）")
     ap.add_argument("--block-z", type=float, default=1.0,
                     help="主视角 looming z 超过多少算‘果蝇觉得危险’（默认 1.0）")
-    ap.add_argument("--block-threat", type=float, default=0.15,
+    ap.add_argument("--block-threat", type=float, default=0.25,
                     help="ONNX 威胁标签分数阈值（默认 0.15）")
     ap.add_argument("--block-energy-min", type=int, default=1,
                     help="技力至少到哪档才格挡：0=空 1=中 2=满（默认 1）")
+    # ★★ 2026-11-01：格挡**硬间隔**（按下后至少等这么久才能再按）
+    ap.add_argument("--block-min-gap", type=float, default=5.0,
+                    help="格挡键按过一次后至少隔多少秒再按（默认 5）")
+    # ★★ 定时回血：不管血量，每 N 秒自动按一次回血键（0=关）
+    ap.add_argument("--heal-every", type=float, default=0.0,
+                    help="每 N 秒强制按一次回血键（默认 0=关；建议 61）")
+    ap.add_argument("--heal-key", default="",
+                    help="回血键；留空则自动取 role==heal 那个槽的键")
     ap.add_argument("--block-hold", type=float, default=1.5,
                     help="格挡后多少秒内不闪避（默认 1.5）")
     ap.add_argument("--block-cool", type=float, default=5.0,
@@ -1727,6 +1735,11 @@ def main():
     #   ★ 果蝇从画面上看不出技能是干什么的（没有 mod），只能把语义当本能写进去 ——
     #     写死一套就只对一种配队有效，所以必须可配。
     _ROLES_TUPLE = tuple(getattr(args, f"role_{i}") for i in range(1, 5))
+    _HEAL_SLOT = next((i + 1 for i, _r in enumerate(_ROLES_TUPLE)
+                      if _r == "heal"), 0)
+    _HEAL_KEY = (str(args.heal_key) if str(args.heal_key or "").strip()
+                 else (str(getattr(args, f"key_skill{_HEAL_SLOT}"))
+                       if _HEAL_SLOT else str(args.skill_key)))
     _KEYMAP = {i: str(getattr(args, f"key_skill{i}")) for i in range(1, 5)}
     _ROLE_CN = {"attack": "攻击", "buff": "增伤", "block": "格挡",
                 "heal": "回血", "gather": "聚怪", "weaken": "挂削弱",
@@ -2446,7 +2459,9 @@ def main():
                 #     energy = 2 满 / 1 中（既没满也没空）/ 0 空
                 if (args.block and ex is not None and forager is not None
                         and m_on
-                        and ts - forager.get("last_block", -99.0) >= args.block_cool):
+                        and ts - forager.get("last_block", -99.0)
+                        >= max(float(args.block_cool),
+                               float(args.block_min_gap))):
                     _bz = float(cm.get("z_s") or 0.0) if cm.get("ready") else 0.0
                     _bth = float(forager.get("threat_max") or 0.0)
                     _bdet = bool(st_onnx and st_onnx.get("enemy_attack"))
@@ -2654,6 +2669,19 @@ def main():
                 #    用**英文大写**（用户要求）：W A S D SPACE SHIFT
                 #    LMB RMB SK1..SK4 ULT1..ULT4 E
                 pressed_keys = []
+                # ---- 定时回血：每 --heal-every 秒强制按一次回血键（不看血量）----
+                if (args.heal_every and args.heal_every > 0 and ex is not None
+                        and forager is not None and m_on and combat_on
+                        and ts - forager.get("last_heal_t", -99.0)
+                        >= float(args.heal_every)):
+                    ex.combat_press(str(_HEAL_KEY))
+                    pressed_keys.append("HEAL")
+                    forager["last_heal_t"] = ts
+                    forager["n_heal"] = forager.get("n_heal", 0) + 1
+                    _nh = forager["n_heal"]
+                    print(f"  [{ts:6.1f}s] ★ 定时回血 → 键 {_HEAL_KEY}"
+                          f"（每 {args.heal_every:.0f}s 一次，第 {_nh} 次）", flush=True)
+
                 _cm_skill_pressed = False
                 if combat_on and ex is not None and cm["ready"]:
                     _ae = float(getattr(args, "attack_every", 0.0) or 0.0)
