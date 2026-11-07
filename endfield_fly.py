@@ -383,6 +383,11 @@ def main():
     ap.add_argument("--block-min-gap", type=float, default=5.0,
                     help="格挡键按过一次后至少隔多少秒再按（默认 5）")
     # ★★ 定时回血：不管血量，每 N 秒自动按一次回血键（0=关）
+    # ★★ 2026-11-01：格挡/攻击技能是**连续技** —— 按第一次后隔 N 秒要再按一次才出伤害。
+    ap.add_argument("--echo-max", type=int, default=3,
+                    help="连续技最多补几次第二段（默认 3）")
+    ap.add_argument("--echo-gap", type=float, default=5.0,
+                    help="连续技第二段的间隔（秒，默认 5；0=关）")
     ap.add_argument("--heal-every", type=float, default=0.0,
                     help="每 N 秒强制按一次回血键（默认 0=关；建议 61）")
     ap.add_argument("--heal-key", default="",
@@ -1741,6 +1746,10 @@ def main():
                  else (str(getattr(args, f"key_skill{_HEAL_SLOT}"))
                        if _HEAL_SLOT else str(args.skill_key)))
     _KEYMAP = {i: str(getattr(args, f"key_skill{i}")) for i in range(1, 5)}
+    _ATK_SLOT = next((i + 1 for i, _r in enumerate(_ROLES_TUPLE)
+                      if _r == "attack"), 0)
+    _ATK_KEY = (str(getattr(args, f"key_skill{_ATK_SLOT}"))
+                if _ATK_SLOT else str(args.skill_key))
     _ROLE_CN = {"attack": "攻击", "buff": "增伤", "block": "格挡",
                 "heal": "回血", "gather": "聚怪", "weaken": "挂削弱",
                 "none": "不用"}
@@ -2119,6 +2128,7 @@ def main():
                 m_on_raw = m_evac or m_red      # 真实判定（打死/结算要用它）
                 # ★ 纯战斗场景：门直接常开（--always-combat）
                 m_on = True if args.always_combat else m_on_raw
+                pressed_keys = []      # 本拍发出的按键（面板/日志用）
                 # 2026-11-01: 格挡优先于闪避 —— 先算这一拍要不要格挡
                 _block_soon = False
                 if (args.block and forager is not None and m_on
@@ -2454,6 +2464,37 @@ def main():
                                   f"第 {forager['n_dodge']} 次")
                         forager["flash_armed"] = _f_now
 
+                # ---- 连续技第二段：到点补一次（格挡 / 攻击技能）----
+                if forager is not None and ex is not None and m_on:
+                    _bt = forager.get("block_echo_at")
+                    if _bt and ts >= float(_bt):
+                        ex.combat_press(str(args.key_block))
+                        pressed_keys.append("BLK2")
+                        _bn = int(forager.get("block_echo_n", 0)) + 1
+                        forager["block_echo_n"] = _bn
+                        if _bn < int(args.echo_max):
+                            forager["block_echo_at"] = ts + float(args.echo_gap)
+                        else:
+                            forager["block_echo_at"] = None
+                        forager["n_block"] = forager.get("n_block", 0) + 1
+                        _nb2 = forager["n_block"]
+                        print(f"  [{ts:6.1f}s] ★★ 格挡·第二段 → 键 {args.key_block}"
+                              f"（累计 {_nb2} 次）", flush=True)
+                    _at = forager.get("atk_echo_at")
+                    if _at and ts >= float(_at):
+                        ex.combat_press(str(_ATK_KEY))
+                        pressed_keys.append("SK" + str(_ATK_KEY))
+                        _an = int(forager.get("atk_echo_n", 0)) + 1
+                        forager["atk_echo_n"] = _an
+                        if _an < int(args.echo_max) and m_on and combat_on:
+                            forager["atk_echo_at"] = ts + float(args.echo_gap)
+                        else:
+                            forager["atk_echo_at"] = None
+                        forager["n_atk_echo"] = forager.get("n_atk_echo", 0) + 1
+                        _na = forager["n_atk_echo"]
+                        print(f"  [{ts:6.1f}s] ★★ 攻击技能·第二段 → 键 {_ATK_KEY}"
+                              f"（累计 {_na} 次）", flush=True)
+
                 # ---- 格挡：果蝇觉得危险 / 检测器报威胁，且**有技力** → 按格挡键 ----
                 #   技力来源：MaaEnd 模型的 EnergyLevelFull / EnergyLevelEmpty
                 #     energy = 2 满 / 1 中（既没满也没空）/ 0 空
@@ -2475,6 +2516,9 @@ def main():
                         pressed_keys.append("BLK")
                         forager["last_block"] = ts
                         forager["n_block"] = forager.get("n_block", 0) + 1
+                        # ★ 连续技：5 秒后自动补第二次（第二段才出伤害）
+                        if float(args.echo_gap) > 0:
+                            forager["block_echo_at"] = ts + float(args.echo_gap)
                         _nb = forager["n_block"]
                         print(f"  [{ts:6.1f}s] ★ 格挡 ← z={_bz:+.2f} 威胁{_bth:.2f} "
                               f"技力{_en}/2 第 {_nb} 次", flush=True)
@@ -2668,7 +2712,6 @@ def main():
                 #    实时指令列表要靠它显示"这一拍到底按了什么"。
                 #    用**英文大写**（用户要求）：W A S D SPACE SHIFT
                 #    LMB RMB SK1..SK4 ULT1..ULT4 E
-                pressed_keys = []
                 # ---- 定时回血：每 --heal-every 秒强制按一次回血键（不看血量）----
                 if (args.heal_every and args.heal_every > 0 and ex is not None
                         and forager is not None and m_on and combat_on
@@ -2847,6 +2890,11 @@ def main():
                                 if _slot:
                                     fod.setdefault("slot_t", {})[_slot] = ts
                                     fod["last_slot_no"] = _slot
+                                    if (0 < _slot <= 4
+                                            and _ROLES_TUPLE[_slot - 1] == "attack"
+                                            and float(args.echo_gap) > 0):
+                                        fod["atk_echo_n"] = 0
+                                        fod["atk_echo_at"] = ts + float(args.echo_gap)
                                     fod["last_slot_t"] = ts
                                 if args.skill_auto:
                                     _gs = _m.group_scores(r)
