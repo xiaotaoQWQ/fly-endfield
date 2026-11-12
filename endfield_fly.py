@@ -388,12 +388,12 @@ def main():
                     help="连续技最多补几次第二段（默认 3）")
     ap.add_argument("--echo-gap", type=float, default=5.0,
                     help="连续技第二段的间隔（秒，默认 5；0=关）")
-    ap.add_argument("--heal-every", type=float, default=0.0,
+    ap.add_argument("--heal-every", type=float, default=70.0,
                     help="每 N 秒强制按一次回血键（默认 0=关；建议 61）")
     ap.add_argument("--heal-on-energy", action="store_true", default=True,
                     help="按技力状态判断回血技能是否结束（默认开）")
-    ap.add_argument("--heal-min-gap", type=float, default=55.0,
-                    help="两次回血的最小间隔（秒，默认 55 —— 技能持续约 60s）")
+    ap.add_argument("--heal-min-gap", type=float, default=70.0,
+                    help="两次回血的最小间隔（秒，默认 70）")
     ap.add_argument("--heal-guard", type=float, default=5.0,
                     help="两次回血按压的最小间隔（秒，默认 5）")
     ap.add_argument("--heal-key", default="",
