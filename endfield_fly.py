@@ -1825,6 +1825,23 @@ def main():
         r = np.zeros(n, dtype=np.float32)
         t0 = time.time()
         _t_prev = 0.0   # 上一拍的时间戳（算这一拍实际时长用）
+        # ★★ 2026-11-01：新一轮开始时**重置所有「上次按过」的时间戳**。
+        #   它们是相对 ts 的（ts 每轮从 0 重新算），不清的话第二轮起
+        #   ts - last_xxx 变成负数 → 回血/格挡/技能闸全部**永远不再触发**
+        #   （用户实测「过了 6 分钟就再也不按回血」就是这个）。
+        #   ★ 必须写成「赋默认值」而不是 pop —— 后面有 fod["last_skill"] 这种
+        #     直接下标访问，pop 掉会 KeyError。
+        if forager is not None:
+            for _k in ("last_heal_t", "last_block", "last_dodge",
+                       "last_dodge_onnx", "last_atk_t"):
+                forager[_k] = -99.0
+            forager["last_skill"] = 0.0
+            forager["last_ult"] = 0.0
+            forager["last_slot_no"] = None
+            forager["last_slot_t"] = -99.0
+            forager["block_echo_at"] = None
+            forager["atk_echo_at"] = None
+            forager["slot_t"] = {}
         rows = []
         escape_left = 0
         walk_lock = 0
@@ -2727,7 +2744,9 @@ def main():
                     _guard = max(float(getattr(args, "heal_guard", 5.0) or 5.0),
                                    float(getattr(args, "heal_min_gap", 55.0) or 55.0))
                     _hfull = (not args.heal_on_energy) or _en_h >= 2
-                    _hfall = _since_h >= float(args.heal_every)
+                    # 负数 = 时间戳是上一轮留下的（ts 重新计数）→ 立刻补一次
+                    _hfall = (_since_h >= float(args.heal_every)
+                              or _since_h < 0)
                     if (_hfull and _since_h >= _guard) or _hfall:
                         ex.combat_press(str(_HEAL_KEY))
                         pressed_keys.append("HEAL")
