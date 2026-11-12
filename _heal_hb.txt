@@ -1,0 +1,11 @@
+                # ★ 心跳日志：每 30 秒报一次回血状态，便于分清「没按」和「按了没效果」
+                if (forager is not None and args.heal_every and args.heal_every > 0
+                        and ts - forager.get("heal_log_t", -99.0) >= 30.0):
+                    forager["heal_log_t"] = ts
+                    _eh = int((st_onnx or {}).get("energy", -1)) if st_onnx else -1
+                    _sh = ts - forager.get("last_heal_t", -99.0)
+                    _nh2 = int(forager.get("n_heal") or 0)
+                    print(f"  [{ts:6.1f}s] · 回血状态：上次 {_sh:.0f}s 前 "
+                          f"下次还剩 {max(0.0, float(args.heal_every) - _sh):.0f}s "
+                          f"energy={_eh} m_on={bool(m_on)} combat={bool(combat_on)} "
+                          f"累计 {_nh2} 次", flush=True)
