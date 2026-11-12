@@ -43,9 +43,9 @@ python -u -X utf8 endfield_fly.py ^
     --overlay --overlay-scale 1.0 --overlay-center --overlay-strip-row --overlay-nostatus ^
     --cc-debug ^
     --forage --auto-outcome --combo --skill-auto --role-1 attack --role-2 gather --role-3 heal --role-4 block --skill-pick sample --skill-temp 0.6 --ult ^
-    --always-combat --combat --block --key-block 4 --block-cool 5 --block-min-gap 5 --block-hold 1.5 --block-threat 0.25 --enemy-lock ^
+    --always-combat --combat --block --key-block 4 --block-cool 0 --block-min-gap 0 --block-hold 1.5 --block-threat 0.25 --enemy-lock ^
     --dodge-primary onnx --dodge-onnx-conf 0.15 --combo-hunger 0.0 --combo-cool 0 --combo-cool-full 0 --dodge-cool 5.0 --dodge-key shift --dodge-key2 space --dodge-tap 0.12 --dodge-lock 2.0 ^
-    --attack-hold 0.8 --attack-every 0 --heal-hp 0.2 --heal-cool 70 --echo-gap 5 --echo-max 3 ^
+    --attack-hold 0.8 --attack-every 0 --no-jump --no-dodge --heal-hp 0.2 --heal-cool 70 --echo-gap 5 --echo-max 3 ^
     --onnx-hz 6 --onnx-conf 0.22 ^
     --seconds 600 ^
     --stuck-sec 3.0 --escape-grace 10 ^

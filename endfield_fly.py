@@ -2532,12 +2532,23 @@ def main():
                     _bz = float(cm.get("z_s") or 0.0) if cm.get("ready") else 0.0
                     _bth = float(forager.get("threat_max") or 0.0)
                     _bdet = bool(st_onnx and st_onnx.get("enemy_attack"))
+                    # ★ 回血优先于格挡：血到阈值且冷却好了 → 这一拍先让回血按
+                    _hpv_b = forager.get("auto_hp")
+                    try:
+                        _hpv_b = float(_hpv_b)
+                        _hok_b = (_hpv_b == _hpv_b)
+                    except (TypeError, ValueError):
+                        _hpv_b, _hok_b = 1.0, False
+                    _heal_due = bool(_hok_b and _hpv_b <= float(args.heal_hp)
+                                    and ts - forager.get("last_heal_t", -99.0)
+                                    >= float(getattr(args, "heal_cool", 70.0)))
                     _danger = (_bz >= float(args.block_z) or _bdet
                                or _bth >= float(args.block_threat))
                     _en = int((st_onnx or {}).get("energy", 1)) if st_onnx else 1
                     forager["energy"] = _en
                     _en_ok = _en >= int(args.block_energy_min)
-                    if _danger and _en_ok and not _skill_sent[0]:
+                    if (_danger and _en_ok and not _skill_sent[0]
+                            and not _heal_due):
                         ex.combat_press(str(args.key_block))
                         _skill_sent[0] = True
                         pressed_keys.append("BLK")
