@@ -2152,6 +2152,7 @@ def main():
                 # ★ 纯战斗场景：门直接常开（--always-combat）
                 m_on = True if args.always_combat else m_on_raw
                 pressed_keys = []      # 本拍发出的按键（面板/日志用）
+                _skill_sent = [False]  # 本拍已发过技能键（一拍只许一个）
                 # 2026-11-01: 格挡优先于闪避 —— 先算这一拍要不要格挡
                 _block_soon = False
                 if (args.block and forager is not None and m_on
@@ -2490,8 +2491,9 @@ def main():
                 # ---- 连续技第二段：到点补一次（格挡 / 攻击技能）----
                 if forager is not None and ex is not None and m_on:
                     _bt = forager.get("block_echo_at")
-                    if _bt and ts >= float(_bt):
+                    if _bt and ts >= float(_bt) and not _skill_sent[0]:
                         ex.combat_press(str(args.key_block))
+                        _skill_sent[0] = True
                         pressed_keys.append("BLK2")
                         _bn = int(forager.get("block_echo_n", 0)) + 1
                         forager["block_echo_n"] = _bn
@@ -2504,8 +2506,9 @@ def main():
                         print(f"  [{ts:6.1f}s] ★★ 格挡·第二段 → 键 {args.key_block}"
                               f"（累计 {_nb2} 次）", flush=True)
                     _at = forager.get("atk_echo_at")
-                    if _at and ts >= float(_at):
+                    if _at and ts >= float(_at) and not _skill_sent[0]:
                         ex.combat_press(str(_ATK_KEY))
+                        _skill_sent[0] = True
                         pressed_keys.append("SK" + str(_ATK_KEY))
                         _an = int(forager.get("atk_echo_n", 0)) + 1
                         forager["atk_echo_n"] = _an
@@ -2534,8 +2537,9 @@ def main():
                     _en = int((st_onnx or {}).get("energy", 1)) if st_onnx else 1
                     forager["energy"] = _en
                     _en_ok = _en >= int(args.block_energy_min)
-                    if _danger and _en_ok:
+                    if _danger and _en_ok and not _skill_sent[0]:
                         ex.combat_press(str(args.key_block))
+                        _skill_sent[0] = True
                         pressed_keys.append("BLK")
                         forager["last_block"] = ts
                         forager["n_block"] = forager.get("n_block", 0) + 1
@@ -2751,8 +2755,10 @@ def main():
                     _since_h = ts - forager.get("last_heal_t", -99.0)
                     _hcool = float(getattr(args, "heal_cool", 70.0) or 70.0)
                     _hfall = _since_h < 0        # 上一轮留下的时间戳 → 立刻补一次
-                    if (_hp_low and _since_h >= _hcool) or _hfall:
+                    if (((_hp_low and _since_h >= _hcool) or _hfall)
+                            and not _skill_sent[0]):
                         ex.combat_press(str(_HEAL_KEY))
+                        _skill_sent[0] = True
                         pressed_keys.append("HEAL")
                         forager["last_heal_t"] = ts
                         forager["n_heal"] = forager.get("n_heal", 0) + 1
@@ -2782,7 +2788,9 @@ def main():
                 _cm_skill_pressed = False
                 if combat_on and ex is not None and cm["ready"]:
                     _ae = float(getattr(args, "attack_every", 0.0) or 0.0)
+                    # ★ 长按普攻正在进行时**不要打断**（否则普攻打不完）
                     _force_atk = bool(_ae > 0 and m_on and forager is not None
+                                       and not atk_holding
                                        and ts - forager.get("last_atk_t", -99.0) >= _ae)
                     if _force_atk:
                         ex.combat_press(args.attack_key)
@@ -2935,8 +2943,9 @@ def main():
                                           f"（<{args.skill_global_gap:.0f}s），这一拍不按",
                                           flush=True)
                                     _sk = None
-                            if _sk is not None:
+                            if _sk is not None and not _skill_sent[0]:
                                 ex.combat_press(str(_sk))
+                                _skill_sent[0] = True
                                 pressed_keys.append(f"SK{_sk}")
                                 fod["last_skill"] = ts
                                 fod["n_skill"] += 1
