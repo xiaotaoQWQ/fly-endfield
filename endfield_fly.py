@@ -443,7 +443,7 @@ def main():
                          "用自己的定时器兜住，别浪费")
     ap.add_argument("--ult-hold", type=float, default=1.0,
                     help="大招按住秒数（默认 1.0）。长按才触发，所以要跨拍")
-    ap.add_argument("--heal-hp", type=float, default=0.2,
+    ap.add_argument("--heal-hp", type=float, default=0.8,
                     help="血条低于它就优先放回血技能（默认 0.5）。★ 这是保命规则，"
                          "给得压得住学习偏移 —— 学不坏")
     ap.add_argument("--skill-interval", type=float, default=4.0,
