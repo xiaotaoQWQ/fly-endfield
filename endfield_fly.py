@@ -2153,6 +2153,40 @@ def main():
                 m_on = True if args.always_combat else m_on_raw
                 pressed_keys = []      # 本拍发出的按键（面板/日志用）
                 _skill_sent = [False]  # 本拍已发过技能键（一拍只许一个）
+                # ---- 回血：**看血量**，掉到阈值以下就按一次，冷却 --heal-cool（默认 70s）----
+                if (ex is not None and forager is not None and m_on and combat_on
+                        and float(args.heal_hp) > 0):
+                    _hpv = forager.get("auto_hp")
+                    try:
+                        _hpv = float(_hpv)
+                        _hp_ok = (_hpv == _hpv)
+                    except (TypeError, ValueError):
+                        _hpv, _hp_ok = 1.0, False
+                    # 血读不到 → 用 ONNX 的「血危」标签兜底
+                    _hp_low = ((_hp_ok and _hpv <= float(args.heal_hp))
+                               or ((not _hp_ok)
+                                   and int(forager.get("onnx_hp_danger") or 0) > 0))
+                    _since_h = ts - forager.get("last_heal_t", -99.0)
+                    _hcool = float(getattr(args, "heal_cool", 70.0) or 70.0)
+                    _hfall = _since_h < 0        # 上一轮留下的时间戳 → 立刻补一次
+                    # ★ 血读不到时（auto_hp=NaN/None）不能永远不回血 → 用 heal_every 定时兜底
+                    _hper = float(getattr(args, "heal_every", 0.0) or 0.0)
+                    _hblind = bool((not _hp_ok) and _hper > 0 and _since_h >= _hper)
+                    if (((_hp_low and _since_h >= _hcool) or _hfall or _hblind)
+                            and not _skill_sent[0]):
+                        ex.combat_press(str(_HEAL_KEY))
+                        _skill_sent[0] = True
+                        pressed_keys.append("HEAL")
+                        forager["last_heal_t"] = ts
+                        forager["n_heal"] = forager.get("n_heal", 0) + 1
+                        _nh = forager["n_heal"]
+                        _hps = f"{_hpv*100:.0f}%" if _hp_ok else "读不到"
+                        if _hblind:
+                            _why2 = "血读不到·定时兜底"
+                        else:
+                            _why2 = f"血 {_hps}"
+                        print(f"  [{ts:6.1f}s] ★ 回血 → 键 {_HEAL_KEY}"
+                              f"（{_why2}，第 {_nh} 次）", flush=True)
                 # 2026-11-01: 格挡优先于闪避 —— 先算这一拍要不要格挡
                 _block_soon = False
                 if (args.block and forager is not None and m_on
@@ -2753,40 +2787,6 @@ def main():
                 #    实时指令列表要靠它显示"这一拍到底按了什么"。
                 #    用**英文大写**（用户要求）：W A S D SPACE SHIFT
                 #    LMB RMB SK1..SK4 ULT1..ULT4 E
-                # ---- 回血：**看血量**，掉到阈值以下就按一次，冷却 --heal-cool（默认 70s）----
-                if (ex is not None and forager is not None and m_on and combat_on
-                        and float(args.heal_hp) > 0):
-                    _hpv = forager.get("auto_hp")
-                    try:
-                        _hpv = float(_hpv)
-                        _hp_ok = (_hpv == _hpv)
-                    except (TypeError, ValueError):
-                        _hpv, _hp_ok = 1.0, False
-                    # 血读不到 → 用 ONNX 的「血危」标签兜底
-                    _hp_low = ((_hp_ok and _hpv <= float(args.heal_hp))
-                               or ((not _hp_ok)
-                                   and int(forager.get("onnx_hp_danger") or 0) > 0))
-                    _since_h = ts - forager.get("last_heal_t", -99.0)
-                    _hcool = float(getattr(args, "heal_cool", 70.0) or 70.0)
-                    _hfall = _since_h < 0        # 上一轮留下的时间戳 → 立刻补一次
-                    # ★ 血读不到时（auto_hp=NaN/None）不能永远不回血 → 用 heal_every 定时兜底
-                    _hper = float(getattr(args, "heal_every", 0.0) or 0.0)
-                    _hblind = bool((not _hp_ok) and _hper > 0 and _since_h >= _hper)
-                    if (((_hp_low and _since_h >= _hcool) or _hfall or _hblind)
-                            and not _skill_sent[0]):
-                        ex.combat_press(str(_HEAL_KEY))
-                        _skill_sent[0] = True
-                        pressed_keys.append("HEAL")
-                        forager["last_heal_t"] = ts
-                        forager["n_heal"] = forager.get("n_heal", 0) + 1
-                        _nh = forager["n_heal"]
-                        _hps = f"{_hpv*100:.0f}%" if _hp_ok else "读不到"
-                        if _hblind:
-                            _why2 = "血读不到·定时兜底"
-                        else:
-                            _why2 = f"血 {_hps}"
-                        print(f"  [{ts:6.1f}s] ★ 回血 → 键 {_HEAL_KEY}"
-                              f"（{_why2}，第 {_nh} 次）", flush=True)
 
                 # ★ 心跳日志：每 30 秒报一次，分清「没按」和「按了没效果」
                 if (forager is not None and ts - forager.get("heal_log_t", -99.0) >= 30.0):
