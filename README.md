@@ -274,6 +274,7 @@ graph/ out/           预处理产物和运行产物（不进仓库）
 |---|---|---|
 | **本项目代码** | **AGPL-3.0** | 见 [`THIRD-PARTY.md`](THIRD-PARTY.md) |
 | MaleCNS 连接组 | CC-BY 4.0 | Janelia Research Campus / FlyEM |
+| **MaaEnd**（识别模型 + 连携模板） | **AGPL-3.0** | [MaaEnd](https://github.com/MaaEnd/MaaEnd) / [MaaEnd-AI](https://github.com/MaaEnd/MaaEnd-AI)：连携菱形模板 `templates/combo_diamond.npy` 取自其 `AutoFight/Combo.png`；战斗识别用其 YOLO 模型（**不打包**，需自行下载） |
 | Interception | **LGPL-3.0**（非商业）| `tools/Interception/`，**必须带它完整的许可文本**；商业用途需另购 |
 | **游戏 UI 模板** | ⚠️ 鹰角版权 | `templates/*.npy`，见下 |
 
@@ -305,6 +306,7 @@ kill_text.npy    248×44    「击败所有敌人」文字
 
 - **Janelia Research Campus / FlyEM** —— MaleCNS 连接组，公开的科学数据
 - **oblitum** —— [Interception](https://github.com/oblitum/Interception) 键盘驱动（LGPL-3.0）
+- **MaaEnd** —— [MaaEnd](https://github.com/MaaEnd/MaaEnd) / [MaaEnd-AI](https://github.com/MaaEnd/MaaEnd-AI)（AGPL-3.0）：连携技的菱形模板、以及战斗识别用的 YOLO 模型都是它的。没有它，"看到屏幕上的提示并按 E"这一步得从零训练一个检测器。
 
 ---
 
