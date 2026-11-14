@@ -717,16 +717,6 @@ def main():
         print(f"  副本判定：看左上角「撤离」面板 "
               f"({_er[0]},{_er[1]}) {_er[2]}×{_er[3]}")
 
-    # 连携技（E）提示。区域已实测标定，ComboMarker 内部有默认值
-    kmark = None
-    if args.combo:
-        from combat import ComboMarker
-        _kr = [int(v) for v in args.combo_rect.split(",")] \
-            if args.combo_rect.strip() else None
-        kmark = ComboMarker(tuple(_kr) if _kr and _kr[2] > 0 else None,
-                            corr_min=args.combo_corr)
-        print(f"  连携技：饥饿 ≥ {args.combo_hunger} 且提示出现 → 按 "
-              f"{args.combo_key.upper()}（间隔 {args.combo_cool}s，0=无冷却）")
 
     # ★ 连携菱形（MaaEnd 的 Combo.png）—— 认得出 ONNX 认不出的新角色（祀）
     dmark = None
@@ -969,7 +959,6 @@ def main():
                 ("权重漂移", f"{f['mb'].drift:.1f}"),
                 ("闻到气味", "是" if f["odor"] else "否"),
                 ("正在出手", "是" if f["attack"] else "否"),
-                ("连携技相关", f"{kmark.corr:+.3f}" if kmark else "—"),
                 # ★ ONNX 识别状态（缺模型时显示「关」）
                 ("ONNX 识别", "开" if f.get("onnx_ok") else "关"),
                 ("ONNX 框数", f.get("onnx_n", 0) if f.get("onnx_ok") else "—"),
@@ -1163,11 +1152,6 @@ def main():
             emark._tm = float(_t.mean())
             emark._ts = float(_t.std()) + 1e-6
             emark._th, emark._tw = _t.shape
-    if kmark is not None:
-        kmark.rect = _combo_rc
-        _t = prof.template("combo_e")
-        if _t is not None:
-            kmark.tpl = _t
     if dmark is not None:
         dmark.rect = prof.rect("combo_diamond")
         _t = prof.template("combo_diamond")
@@ -1188,7 +1172,7 @@ def main():
     print(f"  标定区域按 {prof.s:.3f} 换算："
           f"红环{cmark.rect if cmark else '—'} "
           f"撤离{emark.rect if emark else '—'} "
-          f"连携{kmark.rect if kmark else '—'} "
+          f"连携{dmark.rect if dmark else '—'} "
           f"菱形{dmark.rect if dmark else '—'} "
           f"血条{_ao.HP_RECT}")
 
@@ -2073,13 +2057,6 @@ def main():
                 elif forager is not None:
                     forager["onnx_t0"] = None
                     forager["onnx_stuck"] = False
-                elif kmark is not None:
-                    _kr = kmark.rect              # 用标定值，不依赖命令行
-                    _kimg = lf.at(*_kr)
-                    if _kimg is not None:
-                        m_combo = kmark.step(_kimg)
-                        if m_combo:
-                            _combo_src = "徽标"
 
                 # ★ 连携菱形（MaaEnd 的 Combo.png）：ONNX 认不出祀，这枚认得出。
                 #   实测 1515 帧：真提示 0.94~0.99、负样本最高 0.68（白屏/资源管理器）。

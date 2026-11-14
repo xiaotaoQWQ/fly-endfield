@@ -357,11 +357,9 @@ class ComboMarker:
         self.n = 0
         self.hits = 0
         self.tpl = None
-        if tpl_path is None:
-            tpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    "templates", "combo_e.npy")
+        # 不再有默认模板：由调用方显式给（ComboDiamond 传 combo_diamond.npy）
         self.tpl_path = tpl_path
-        if os.path.exists(tpl_path):
+        if tpl_path is not None and os.path.exists(tpl_path):
             t = np.load(tpl_path)
             if t.ndim == 3:
                 t = t.astype(np.float32).mean(axis=2)
