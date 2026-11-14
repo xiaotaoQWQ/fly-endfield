@@ -384,10 +384,6 @@ def main():
                     help="格挡键按过一次后至少隔多少秒再按（默认 5）")
     # ★★ 定时回血：不管血量，每 N 秒自动按一次回血键（0=关）
     # ★★ 2026-11-01：格挡/攻击技能是**连续技** —— 按第一次后隔 N 秒要再按一次才出伤害。
-    ap.add_argument("--echo-max", type=int, default=3,
-                    help="连续技最多补几次第二段（默认 3）")
-    ap.add_argument("--echo-gap", type=float, default=5.0,
-                    help="连续技第二段的间隔（秒，默认 5；0=关）")
     ap.add_argument("--heal-every", type=float, default=70.0,
                     help="每 N 秒强制按一次回血键（默认 0=关；建议 61）")
     ap.add_argument("--heal-on-energy", action="store_true", default=True,
@@ -408,8 +404,6 @@ def main():
                     help="闪避后锁键秒数（默认 1.2，期间一个键都不发）")
     ap.add_argument("--dodge-tap", type=float, default=0.12,
                     help="闪避键按压时长（秒，默认 0.12）。原来是 0.05 —— 太短，游戏可能只当成松开了冲刺")
-    ap.add_argument("--attack-every", type=float, default=0.0,
-                    help="战斗中强制攻击的最小间隔（秒，0=关；建议 0.5~0.8）")
     ap.add_argument("--attack-hold", type=float, default=1.0,
                     help="★ 普攻按住多少秒（默认 1.0）。改长按后时长超过决策拍"
                          "（400ms），所以按下/抬起落在**不同的拍**上 —— "
@@ -1833,14 +1827,12 @@ def main():
         #     直接下标访问，pop 掉会 KeyError。
         if forager is not None:
             for _k in ("last_heal_t", "last_block", "last_dodge",
-                       "last_dodge_onnx", "last_atk_t"):
+                       "last_dodge_onnx"):
                 forager[_k] = -99.0
             forager["last_skill"] = 0.0
             forager["last_ult"] = 0.0
             forager["last_slot_no"] = None
             forager["last_slot_t"] = -99.0
-            forager["block_echo_at"] = None
-            forager["atk_echo_at"] = None
             forager["slot_t"] = {}
         rows = []
         escape_left = 0
@@ -2522,38 +2514,6 @@ def main():
                                   f"第 {forager['n_dodge']} 次")
                         forager["flash_armed"] = _f_now
 
-                # ---- 连续技第二段：到点补一次（格挡 / 攻击技能）----
-                if forager is not None and ex is not None and m_on:
-                    _bt = forager.get("block_echo_at")
-                    if _bt and ts >= float(_bt) and not _skill_sent[0]:
-                        ex.combat_press(str(args.key_block))
-                        _skill_sent[0] = True
-                        pressed_keys.append("BLK2")
-                        _bn = int(forager.get("block_echo_n", 0)) + 1
-                        forager["block_echo_n"] = _bn
-                        if _bn < int(args.echo_max):
-                            forager["block_echo_at"] = ts + float(args.echo_gap)
-                        else:
-                            forager["block_echo_at"] = None
-                        forager["n_block"] = forager.get("n_block", 0) + 1
-                        _nb2 = forager["n_block"]
-                        print(f"  [{ts:6.1f}s] ★★ 格挡·第二段 → 键 {args.key_block}"
-                              f"（累计 {_nb2} 次）", flush=True)
-                    _at = forager.get("atk_echo_at")
-                    if _at and ts >= float(_at) and not _skill_sent[0]:
-                        ex.combat_press(str(_ATK_KEY))
-                        _skill_sent[0] = True
-                        pressed_keys.append("SK" + str(_ATK_KEY))
-                        _an = int(forager.get("atk_echo_n", 0)) + 1
-                        forager["atk_echo_n"] = _an
-                        if _an < int(args.echo_max) and m_on and combat_on:
-                            forager["atk_echo_at"] = ts + float(args.echo_gap)
-                        else:
-                            forager["atk_echo_at"] = None
-                        forager["n_atk_echo"] = forager.get("n_atk_echo", 0) + 1
-                        _na = forager["n_atk_echo"]
-                        print(f"  [{ts:6.1f}s] ★★ 攻击技能·第二段 → 键 {_ATK_KEY}"
-                              f"（累计 {_na} 次）", flush=True)
 
                 # ---- 格挡：果蝇觉得危险 / 检测器报威胁，且**有技力** → 按格挡键 ----
                 #   技力来源：MaaEnd 模型的 EnergyLevelFull / EnergyLevelEmpty
@@ -2591,9 +2551,6 @@ def main():
                         pressed_keys.append("BLK")
                         forager["last_block"] = ts
                         forager["n_block"] = forager.get("n_block", 0) + 1
-                        # ★ 连续技：5 秒后自动补第二次（第二段才出伤害）
-                        if float(args.echo_gap) > 0:
-                            forager["block_echo_at"] = ts + float(args.echo_gap)
                         _nb = forager["n_block"]
                         print(f"  [{ts:6.1f}s] ★ 格挡 ← z={_bz:+.2f} 威胁{_bth:.2f} "
                               f"技力{_en}/2 第 {_nb} 次", flush=True)
@@ -2807,14 +2764,6 @@ def main():
 
                 _cm_skill_pressed = False
                 if combat_on and ex is not None and cm["ready"]:
-                    _ae = float(getattr(args, "attack_every", 0.0) or 0.0)
-                    # ★ 长按普攻正在进行时**不要打断**（否则普攻打不完）
-                    _force_atk = bool(_ae > 0 and m_on and forager is not None
-                                       and not atk_holding
-                                       and ts - forager.get("last_atk_t", -99.0) >= _ae)
-                    if _force_atk:
-                        ex.combat_press(args.attack_key)
-                        forager["last_atk_t"] = ts
                     if cm["attack"]:
                         ex.combat_press(args.attack_key)
                         pressed_keys.append("LMB" if "mouse" in str(args.attack_key)
@@ -2972,11 +2921,6 @@ def main():
                                 if _slot:
                                     fod.setdefault("slot_t", {})[_slot] = ts
                                     fod["last_slot_no"] = _slot
-                                    if (0 < _slot <= 4
-                                            and _ROLES_TUPLE[_slot - 1] == "attack"
-                                            and float(args.echo_gap) > 0):
-                                        fod["atk_echo_n"] = 0
-                                        fod["atk_echo_at"] = ts + float(args.echo_gap)
                                     fod["last_slot_t"] = ts
                                 if args.skill_auto:
                                     _gs = _m.group_scores(r)
