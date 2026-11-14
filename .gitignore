@@ -53,3 +53,13 @@ _msg.txt
 DECISIONS.md
 knowledge/CHANGELOG.md
 knowledge/README.md
+
+# ---- 内部探针脚本（本地保留，不公开）----
+dodge_probe.py
+dodge_probe.cmd
+ef_probe.py
+capture_for_training.cmd
+check_combo_diamond.py
+check_onnx_vs_template.py
+check_resolutions.py
+check_templates.py
