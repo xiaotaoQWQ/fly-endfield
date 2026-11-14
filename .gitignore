@@ -48,3 +48,8 @@ _maa_probe/
 # 证据图（对比 ONNX vs 模板的误报）
 !shots/combo_dispute.png
 _msg.txt
+
+# ---- ★ 开发记录：不公开（本地保留）----
+DECISIONS.md
+knowledge/CHANGELOG.md
+knowledge/README.md
